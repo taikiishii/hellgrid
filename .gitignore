@@ -1,0 +1,31 @@
+# ===== OS が作る不要ファイル =====
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ===== エディタ・IDE =====
+.vscode/
+.idea/
+*.swp
+*~
+
+# ===== Node (将来 npm を使う場合) =====
+node_modules/
+npm-debug.log*
+
+# ===== Python (tools/ の検証スクリプト用) =====
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ===== 検証スクリプトの一時生成物 =====
+# Playwright が撮るスクリーンショットなど(コミット不要)
+tools/*.png
+
+# ===== Claude Code のローカル設定(個人環境固有) =====
+.claude/settings.local.json
+
+# ===== ログ・一時ファイル =====
+*.log
+tmp/
