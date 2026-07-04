@@ -1253,6 +1253,7 @@ function handleKeyPress(code) {
   if (code === 'Digit2') switchWeapon('shotgun');
   if (code === 'Digit3') switchWeapon('knife');
   if (code === 'KeyM') game.showMap = !game.showMap;
+  if (code === 'KeyB') { game.showRearview = !game.showRearview; showMessage(game.showRearview ? 'バックミラー ON' : 'バックミラー OFF'); }
   if (code === 'KeyP') { Sound.toggleMute(); showMessage(Sound.muted ? 'サウンド OFF' : 'サウンド ON'); }
 }
 
@@ -1871,6 +1872,12 @@ function updateEnemies(dt) {
 // 「床スパン(タイル上面)」「段差の立ち上がり(ライザー)」「壁」を手前から順に描く。
 // clipBot(描画済みの下端)より下には描かないことで前後関係を保つ。
 const zBuffer = new Float32Array(W);
+// バックミラー(後方ビュー)用のオフスクリーンと深度バッファ
+const MIRROR_W = 200, MIRROR_H = 54;
+const mirrorCanvas = makeCanvas(MIRROR_W, MIRROR_H);
+const mirrorCtx = mirrorCanvas.getContext('2d');
+mirrorCtx.imageSmoothingEnabled = false;
+const rearZ = new Float32Array(MIRROR_W);
 
 // 列ごとの床オクルージョン: 床スパン/段差が画面下側を塗った位置を距離つきで記録し、
 // スプライト描画時の下側クリップ(段差の陰に隠れる部分)に使う
@@ -2335,6 +2342,114 @@ function renderMinimap() {
   ctx.stroke();
 }
 
+// バックミラー: 真後ろを向いた視界を上端中央に小さく描く(左右反転した鏡像)。
+// 視界外(背後)の敵を把握するための機能。
+function renderRearview() {
+  const g = mirrorCtx;
+  const mw = MIRROR_W, mh = MIRROR_H;
+  const def = level.def;
+  // 後方カメラ(向き・カメラ平面を反転)
+  const dirX = -player.dirX, dirY = -player.dirY;
+  const planeX = -player.planeX, planeY = -player.planeY;
+
+  g.fillStyle = def.ceilColor; g.fillRect(0, 0, mw, mh / 2);
+  g.fillStyle = def.floorColor; g.fillRect(0, mh / 2, mw, mh / 2);
+
+  // 壁(メインビューと同じDDA)
+  for (let x = 0; x < mw; x++) {
+    const cameraX = 2 * x / mw - 1;
+    const rayDirX = dirX + planeX * cameraX;
+    const rayDirY = dirY + planeY * cameraX;
+    let mapX = player.x | 0, mapY = player.y | 0;
+    const deltaX = Math.abs(1 / rayDirX), deltaY = Math.abs(1 / rayDirY);
+    let stepX, stepY, sideX, sideY;
+    if (rayDirX < 0) { stepX = -1; sideX = (player.x - mapX) * deltaX; }
+    else { stepX = 1; sideX = (mapX + 1 - player.x) * deltaX; }
+    if (rayDirY < 0) { stepY = -1; sideY = (player.y - mapY) * deltaY; }
+    else { stepY = 1; sideY = (mapY + 1 - player.y) * deltaY; }
+    let side = 0, hitChar = null, perpDist = 0, texX = 0;
+    for (let i = 0; i < 128; i++) {
+      if (sideX < sideY) { sideX += deltaX; mapX += stepX; side = 0; }
+      else { sideY += deltaY; mapY += stepY; side = 1; }
+      const ch = cellAt(mapX, mapY);
+      if (ch === null) continue;
+      perpDist = side === 0 ? sideX - deltaX : sideY - deltaY;
+      let wallX = side === 0 ? player.y + perpDist * rayDirY : player.x + perpDist * rayDirX;
+      wallX -= Math.floor(wallX);
+      if (isDoorChar(ch)) {
+        const d = level.doors[`${mapX},${mapY}`];
+        const shifted = wallX + d.open;
+        if (shifted >= 1) continue;
+        texX = (shifted * TEX) | 0;
+      } else {
+        texX = (wallX * TEX) | 0;
+        if ((side === 0 && rayDirX > 0) || (side === 1 && rayDirY < 0)) texX = TEX - texX - 1;
+      }
+      hitChar = ch; break;
+    }
+    if (hitChar === null) { rearZ[x] = 99; continue; }
+    rearZ[x] = perpDist;
+    const lineH = (mh / perpDist) | 0;
+    const y0 = ((mh - lineH) / 2) | 0;
+    const tex = textures[hitChar];
+    g.drawImage(side === 1 ? tex.dark : tex.lit, texX, 0, 1, TEX, x, y0, 1, lineH);
+    const fog = clamp(1 - 6 / (perpDist + 3), 0, 0.82);
+    if (fog > 0.04) {
+      const [fr, fgc, fb] = def.fogColor;
+      g.fillStyle = `rgba(${fr},${fgc},${fb},${fog})`;
+      g.fillRect(x, y0, 1, lineH);
+    }
+  }
+
+  // 敵スプライト(後方カメラで投影、概況把握なので高さは簡略)
+  const invDet = 1 / (planeX * dirY - dirX * planeY);
+  const en = level.enemies.filter(e => !e.dormant && e.state !== 'dead');
+  for (const e of en) e._rd = dist2(player.x, player.y, e.x, e.y);
+  en.sort((a, b) => b._rd - a._rd);
+  for (const e of en) {
+    const relX = e.x - player.x, relY = e.y - player.y;
+    const transX = invDet * (dirY * relX - dirX * relY);
+    const transY = invDet * (-planeY * relX + planeX * relY);
+    if (transY <= 0.1) continue;
+    const screenX = (mw / 2) * (1 + transX / transY);
+    const scale = ENEMY_TYPES[e.type].scale || 1;
+    const spriteH = Math.abs(mh / transY) * scale;
+    const spriteW = spriteH;
+    const S = sprites[e.type];
+    let frame;
+    if (e.state === 'pain') frame = S.pain;
+    else if (e.state === 'attack') frame = S.aim;
+    else frame = S.walk[((e.animT * 4) | 0) % 2];
+    const bottom = (mh + Math.abs(mh / transY)) / 2;
+    const drawY0 = bottom - spriteH;
+    const x0 = Math.max(0, (screenX - spriteW / 2) | 0);
+    const x1 = Math.min(mw - 1, (screenX + spriteW / 2) | 0);
+    for (let sx = x0; sx <= x1; sx++) {
+      if (rearZ[sx] <= transY - 0.05) continue;
+      const texCol = clamp((((sx - (screenX - spriteW / 2)) / spriteW) * TEX) | 0, 0, TEX - 1);
+      g.drawImage(frame, texCol, 0, 1, TEX, sx, drawY0, 1, spriteH);
+    }
+  }
+
+  // メイン画面の上端中央へ左右反転(鏡像)して貼る
+  const dx = (W - mw) >> 1, dy = 6;
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(dx + mw, dy); ctx.scale(-1, 1);
+  ctx.drawImage(mirrorCanvas, 0, 0);
+  ctx.restore();
+  // 枠とラベル
+  ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.lineWidth = 3;
+  ctx.strokeRect(dx - 2, dy - 2, mw + 4, mh + 4);
+  ctx.strokeStyle = 'rgba(200,200,210,0.5)'; ctx.lineWidth = 1;
+  ctx.strokeRect(dx - 0.5, dy - 0.5, mw + 1, mh + 1);
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(dx, dy, 46, 13);
+  ctx.font = 'bold 9px monospace'; ctx.fillStyle = 'rgba(220,220,225,0.85)';
+  ctx.textBaseline = 'top';
+  ctx.fillText('REAR', dx + 5, dy + 3);
+  ctx.textBaseline = 'alphabetic';
+}
+
 // メッセージ表示
 let message = '', messageT = 0;
 function showMessage(msg) {
@@ -2408,7 +2523,7 @@ function renderTitle() {
   const help = [
     'WASD: 移動   マウス: 旋回・上下視点 / ←→: 旋回',
     'クリック / Space: 射撃   E: ドア・スイッチ',
-    '1/2/3: 武器切替(3=ナイフ)   M: マップ   P: サウンドON/OFF',
+    '1/2/3: 武器切替(3=ナイフ)   M: マップ   B: 後方ミラー   P: サウンド',
   ];
   let y = 214;
   for (const line of help) { ctx.fillText(line, W / 2, y); y += 25; }
@@ -2431,6 +2546,7 @@ function renderTitle() {
 const game = {
   state: 'title', // title / playing / dead / levelEnd / gameClear
   showMap: false,
+  showRearview: false,
 };
 
 // テーマを切り替え、テクスチャ・スプライトを作り直す
@@ -2498,6 +2614,7 @@ function frame(now) {
       resolvePlayerEnemyCollision();
     }
     renderView();
+    if (game.showRearview) renderRearview();
     if (game.state === 'playing' || game.state === 'dead') {
       renderWeapon();
     }
