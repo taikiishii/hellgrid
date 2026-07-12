@@ -26,12 +26,23 @@ const SIM_FILES = [
   'js/sim/world.js',
 ];
 
-function createSim() {
+// 学習環境 (観測・行動・報酬)。シムと同じコンテキストに載せる
+const ENV_FILES = [
+  'env/obs.js',
+  'env/env.js',
+];
+
+function load(files) {
   const ctx = vm.createContext({ console });
-  for (const f of SIM_FILES) {
+  for (const f of files) {
     vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
   }
   return ctx;
 }
 
-module.exports = { createSim, SIM_FILES };
+function createSim() { return load(SIM_FILES); }
+
+// HellgridEnv まで込みのコンテキスト。1つのコンテキストに Env を何個でも並べられる
+function createEnvContext() { return load(SIM_FILES.concat(ENV_FILES)); }
+
+module.exports = { createSim, createEnvContext, SIM_FILES, ENV_FILES };
