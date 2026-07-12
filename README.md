@@ -76,12 +76,41 @@ E1M5: 水路)。
 
 ## ファイル構成
 
+シミュレーション(ゲームのルール)と、描画・音・入力(見た目)を分けてあります。
+シミュレーション側はDOMにもCanvasにも実時間にも依存せず、Nodeでヘッドレスに
+そのまま走ります(機械学習で自動プレイさせるため)。
+
 ```
-index.html      … エントリ(canvasとスクリプト読み込みのみ)
-js/levels.js    … ステージデータ(マップ・敵・アイテム配置)
-js/game.js      … エンジン本体(描画・AI・武器・サウンド・状態管理)
-tools/check-maps.js … マップデータ検証 (node tools/check-maps.js)
+index.html          … エントリ(canvasとスクリプト読み込みのみ)
+js/levels.js        … ステージデータ(マップ・敵・アイテム配置)
+
+js/sim/             ── シミュレーション: DOM非依存・決定的 ──
+  rng.js            … シード付き擬似乱数(Math.randomは使わない)
+  constants.js      … 定数と敵・武器・アイテムのテーブル
+  world.js          … World クラス(移動・戦闘・敵AI・ドア・状態遷移)
+
+js/themes.js        … カラーテーマ(見た目だけ)
+js/sound.js         … WebAudio手続き生成サウンド
+js/render.js        … テクスチャ・スプライト・レイキャスト描画・HUD
+js/main.js          … ブラウザ用シェル(入力・タイトル・固定タイムステップのループ)
+
+env/sim-loader.cjs  … Nodeから js/sim/* を読み込む(vm・ビルド不要)
 ```
+
+`World` は1インスタンス=1ゲーム世界で、同一プロセスに何個でも並べられます。
+音・メッセージ・ポインタロックは `emit()` でイベントとして外に投げるだけで、
+`World` 自身は副作用を持ちません。
+
+### テスト
+
+```
+node tools/check-maps.js    … マップデータ検証(行の長さ・キーの整合性・高さレイヤー)
+node tools/sim-test.cjs     … ヘッドレスでシムを検証(決定性・スループット)
+python tools/smoke-test.py  … ブラウザで起動して描画とコンソールエラーを確認
+python tools/parity-test.py … Nodeのシムとブラウザのシムが完全一致するか検証
+```
+
+`parity-test.py` が通っている限り、Nodeで学習した方策はブラウザでそのまま通用します。
 
 ## ステージの追加方法
 
@@ -117,12 +146,13 @@ tools/check-maps.js … マップデータ検証 (node tools/check-maps.js)
 
 データ駆動なので、以下はテーブルにエントリを足すだけで増やせます:
 
-- **敵の種類** … `game.js` の `ENEMY_TYPES` + スプライト描画関数 + `ENEMY_CHARS`
-- **武器** … `WEAPONS` テーブル(例: チェインガン=低ダメージ高連射。
-  `melee: true` を付けると近接武器になり、`range`/`halfWidth` で間合いを指定)
-- **アイテム** … `ITEM_TYPES`(例: アーマー、無敵スフィア)
-- **壁テクスチャ** … `buildTextures()` に文字を追加
-- **カラーテーマ** … `THEMES` に色パレット1つ + `SPRITE_BUILDERS` に
+- **敵の種類** … `sim/constants.js` の `ENEMY_TYPES` + `ENEMY_CHARS` +
+  `render.js` にスプライト描画関数
+- **武器** … `sim/constants.js` の `WEAPONS` テーブル(例: チェインガン=低ダメージ
+  高連射。`melee: true` を付けると近接武器になり、`range`/`halfWidth` で間合いを指定)
+- **アイテム** … `sim/constants.js` の `ITEM_TYPES`(例: 無敵スフィア)
+- **壁テクスチャ** … `render.js` の `buildTextures()` に文字を追加
+- **カラーテーマ** … `themes.js` の `THEMES` に色パレット1つ + `SPRITE_BUILDERS` に
   敵スプライト描画関数のセット1つを足すと、新しいモードが選べるようになる
   (壁・床・UI・武器・敵・エフェクトの色と見た目をまとめて差し替え)
 

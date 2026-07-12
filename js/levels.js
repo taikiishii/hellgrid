@@ -315,3 +315,5 @@ const LEVELS = [
     ],
   },
 ];
+
+globalThis.LEVELS = LEVELS;
