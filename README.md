@@ -76,12 +76,102 @@ E1M5: 水路)。
 
 ## ファイル構成
 
+シミュレーション(ゲームのルール)と、描画・音・入力(見た目)を分けてあります。
+シミュレーション側はDOMにもCanvasにも実時間にも依存せず、Nodeでヘッドレスに
+そのまま走ります(機械学習で自動プレイさせるため)。
+
 ```
-index.html      … エントリ(canvasとスクリプト読み込みのみ)
-js/levels.js    … ステージデータ(マップ・敵・アイテム配置)
-js/game.js      … エンジン本体(描画・AI・武器・サウンド・状態管理)
-tools/check-maps.js … マップデータ検証 (node tools/check-maps.js)
+index.html          … エントリ(canvasとスクリプト読み込みのみ)
+js/levels.js        … ステージデータ(マップ・敵・アイテム配置)
+
+js/sim/             ── シミュレーション: DOM非依存・決定的 ──
+  rng.js            … シード付き擬似乱数(Math.randomは使わない)
+  constants.js      … 定数と敵・武器・アイテムのテーブル
+  world.js          … World クラス(移動・戦闘・敵AI・ドア・状態遷移)
+
+js/themes.js        … カラーテーマ(見た目だけ)
+js/sound.js         … WebAudio手続き生成サウンド
+js/render.js        … テクスチャ・スプライト・レイキャスト描画・HUD
+js/main.js          … ブラウザ用シェル(入力・タイトル・固定タイムステップのループ)
+
+env/                ── 機械学習 (強化学習の環境と学習) ──
+  sim-loader.cjs    … Nodeから js/sim/* を読み込む(vm・ビルド不要)
+  obs.js            … 観測(レイ・自己中心グリッド・出口までのBFS距離場)
+  env.js            … HellgridEnv(行動・報酬・エピソード管理)
+  server.js         … 1プロセスでN環境をホストするバッチサーバ(stdio)
+  protocol.py       … server.js と話す低レベル層(numpyのみ)
+  hellgrid_env.py   … Stable-Baselines3 の VecEnv
+  train.py          … PPO + カリキュラム
+  eval.py           … 学習した方策の評価
 ```
+
+`World` は1インスタンス=1ゲーム世界で、同一プロセスに何個でも並べられます。
+音・メッセージ・ポインタロックは `emit()` でイベントとして外に投げるだけで、
+`World` 自身は副作用を持ちません。
+
+### テスト
+
+```
+node tools/check-maps.js    … マップデータ検証(行の長さ・キーの整合性・高さレイヤー)
+node tools/sim-test.cjs     … ヘッドレスでシムを検証(決定性・スループット)
+node tools/env-test.cjs     … 学習環境を検証(観測の値域・BFS距離場・報酬整形)
+python tools/smoke-test.py  … ブラウザで起動して描画とコンソールエラーを確認
+python tools/parity-test.py … Nodeのシムとブラウザのシムが完全一致するか検証
+python tools/bench-env.py   … 学習環境のスループット計測(SB3不要)
+```
+
+`parity-test.py` が通っている限り、Nodeで学習した方策はブラウザでそのまま通用します。
+
+## 機械学習で自動プレイさせる
+
+強化学習(PPO)で、全5ステージをクリアする方策を学習させます。
+
+**→ 設計と実装の詳しい解説: [docs/machine-learning.md](docs/machine-learning.md)**
+(強化学習が初めての人向け。観測・報酬設計・カリキュラム・実際に踏んだバグまで)
+
+### 環境の設計
+
+このゲームはレイキャスターなので、**画面を描いてCNNに見せる必要がありません**。
+レイが何に当たったかを直接ベクトルにすれば「見えているもの」とほぼ等価な観測になり、
+描画コストがゼロになるぶん学習が2〜3桁速くなります。
+
+- **観測** `Box(1231,)`
+  - レイ 24本 × 15ch: 壁までの距離、ドア/施錠ドア/出口スイッチか、そのレイ上の
+    敵の距離と種別、アイテムの距離と種別、樽の距離
+  - 自己中心グリッド 11×11 × 7ch: 壁・ドア・水・高さ・敵・アイテム、そして
+    **出口までのBFS距離の勾配**(これが探索の背骨になる)
+  - スカラー 24: HP・アーマー・弾・武器・キーカード・出口までの距離 など
+- **行動** `MultiDiscrete([3,3,5,3,2,2,4])` — 前後 / 左右 / 旋回 / 上下視点 /
+  射撃 / E(使う) / 武器切替。フレームスキップ4で15Hzで判断
+- **報酬** 与ダメージ・キル・アイテム・キーカード・シークレット・ステージクリアを正、
+  被ダメージ・死亡・時間・弾の消費を負。加えて**出口までのBFS距離によるポテンシャル
+  整形**(1タイル近づくごとに +0.1)。これがないと疎報酬でナビゲーションが学習できません
+- 出口が施錠ドアの向こうにあるステージでは、目標が自動的に**キーカードに切り替わり**、
+  取った瞬間に出口へ切り替わります
+
+### 学習
+
+```
+python -m venv .venv && .venv/Scripts/pip install torch "stable-baselines3[extra]"
+
+python env/train.py --stage nav      --steps 3000000                                # 敵なし・E1M1で「出口に着く」
+python env/train.py --stage nav-all  --steps 5000000  --init runs/nav/final.zip     # 敵なし・全5ステージ
+python env/train.py --stage combat   --steps 5000000  --init runs/nav-all/final.zip # E1M2で戦闘
+python env/train.py --stage single   --steps 20000000 --init runs/combat/final.zip  # 全部入り・1ステージ単位
+python env/train.py --stage campaign --steps 20000000 --init runs/single/final.zip  # E1M1から通しでクリア
+
+python env/eval.py --model runs/single/final.zip --stage single --episodes 50
+tensorboard --logdir runs/
+```
+
+いきなり全部入りで学習させても、序盤の報酬が疎すぎて学習が立ち上がりません。
+上のように段階を追って、前段の重みを `--init` で引き継ぎます。
+
+### 性能
+
+シミュレーションは1コアで **46k step/秒**(描画なし)。観測の生成を含めると
+**3.5k 行動/秒**。Node は単スレッドなので、12ワーカー × 32環境に分けて
+**8.8k 行動/秒(35k sim step/秒)** 出ます。PPO の学習は 7k FPS 前後で回ります。
 
 ## ステージの追加方法
 
@@ -117,12 +207,13 @@ tools/check-maps.js … マップデータ検証 (node tools/check-maps.js)
 
 データ駆動なので、以下はテーブルにエントリを足すだけで増やせます:
 
-- **敵の種類** … `game.js` の `ENEMY_TYPES` + スプライト描画関数 + `ENEMY_CHARS`
-- **武器** … `WEAPONS` テーブル(例: チェインガン=低ダメージ高連射。
-  `melee: true` を付けると近接武器になり、`range`/`halfWidth` で間合いを指定)
-- **アイテム** … `ITEM_TYPES`(例: アーマー、無敵スフィア)
-- **壁テクスチャ** … `buildTextures()` に文字を追加
-- **カラーテーマ** … `THEMES` に色パレット1つ + `SPRITE_BUILDERS` に
+- **敵の種類** … `sim/constants.js` の `ENEMY_TYPES` + `ENEMY_CHARS` +
+  `render.js` にスプライト描画関数
+- **武器** … `sim/constants.js` の `WEAPONS` テーブル(例: チェインガン=低ダメージ
+  高連射。`melee: true` を付けると近接武器になり、`range`/`halfWidth` で間合いを指定)
+- **アイテム** … `sim/constants.js` の `ITEM_TYPES`(例: 無敵スフィア)
+- **壁テクスチャ** … `render.js` の `buildTextures()` に文字を追加
+- **カラーテーマ** … `themes.js` の `THEMES` に色パレット1つ + `SPRITE_BUILDERS` に
   敵スプライト描画関数のセット1つを足すと、新しいモードが選べるようになる
   (壁・床・UI・武器・敵・エフェクトの色と見た目をまとめて差し替え)
 
