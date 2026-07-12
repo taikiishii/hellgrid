@@ -80,12 +80,16 @@ class Policy {
   }
 }
 
-// World に入力を流し込む。学習時の HellgridEnv.step とまったく同じ順序で行う
+// World に入力を流し込む。学習時の HellgridEnv.step とまったく同じ順序で行う。
+//
+// script を渡すと、方策を呼ばずにその行動列をそのまま流す(リプレイ)。World は
+// 決定的なので、同じシード + 同じ行動列 なら寸分違わず同じプレイが再現される。
 class AIDriver {
-  constructor(world, policy) {
+  constructor(world, policy, script) {
     this.world = world;
     this.policy = policy;
-    this.obs = new Float32Array(policy.obsDim);
+    this.script = script || null;
+    this.obs = new Float32Array(policy ? policy.obsDim : OBS_DIM);
     this.tick = 0;
     this.turn = 0;
     this.pitch = 0;
@@ -95,7 +99,7 @@ class AIDriver {
     this.syncLevel();
   }
 
-  // ステージが変わったら、出口までの距離場を張り直す
+  // ステージが変わったら、出口までの距離場を張り直し、録画も撮り直す
   syncLevel() {
     const lv = this.world.level;
     lv.meta = levelMeta(lv);
@@ -104,6 +108,11 @@ class AIDriver {
     this.hadBlue = this.world.player.keys.blue;
     this.levelIndex = lv.index;
     this.tick = 0;
+    this.frame = 0;
+    if (!this.script) {
+      // リプレイ用の記録。シードと行動列さえあればこのプレイを完全に再現できる
+      this.record = { v: 1, seed: this.world.seed, level: lv.index, frameSkip: AI_FRAME_SKIP, actions: [] };
+    }
   }
 
   // world.step() の直前に、毎シムステップ呼ぶ
@@ -126,8 +135,12 @@ class AIDriver {
 
   decide() {
     const w = this.world;
-    buildObs(w, this.goal, this.obs);
-    const a = this.policy.act(this.obs);
+    buildObs(w, this.goal, this.obs);   // リプレイ中も可視化のために観測は作る
+    const a = this.script
+      ? (this.script[this.frame] || [0, 0, 0, 0, 0, 0, 0])
+      : this.policy.act(this.obs);
+    if (!this.script) this.record.actions.push(a);
+    this.frame++;
     this.action = a;
 
     const weapon = WEAPON_BY_ACTION[a[6]];

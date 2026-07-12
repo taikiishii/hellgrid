@@ -17,6 +17,7 @@ const ui = {
   screen: 'title',       // 'title' / 'game'
   showMap: false,
   showRearview: false,
+  showVision: true,      // AI がプレイ中、その「見え方」を可視化する (V キー)
 };
 
 let curWorld = null;
@@ -29,13 +30,23 @@ let policy = null;
 const AI_AVAILABLE = typeof POLICY !== 'undefined' && typeof AIDriver !== 'undefined';
 const AI_END_WAIT = 2.5;   // クリア/死亡から自動で次へ進むまでの秒数
 
+// 再生コントロール (AI デモ・リプレイの観察用)
+const SPEEDS = [0.1, 0.25, 0.5, 1, 2, 4];
+let speedIdx = 3;          // 等速
+let paused = false;
+let stepOnce = false;      // コマ送り: 1行動ぶん (= frameSkip シムステップ) だけ進める
+
+function randSeed() { return (Math.random() * 0x100000000) >>> 0; }
+
 // ======================= 起動・状態遷移 =======================
 
 function newGame(withAI = false) {
   Sound.init();
-  curWorld = new World({ seed: (Math.random() * 0x100000000) >>> 0, level: 0 });
+  curWorld = new World({ seed: randSeed(), level: 0 });
   ui.screen = 'game';
   ai = null;
+  paused = false;
+  speedIdx = 3;
   if (withAI) enableAI();
   else canvas.requestPointerLock();
 }
@@ -45,7 +56,7 @@ function enableAI() {
   if (!policy) policy = new Policy(POLICY);   // 重みのデコードは初回だけ
   ai = new AIDriver(curWorld, policy);
   document.exitPointerLock();
-  showMessage('AI がプレイ中 (I キーで操作を取り戻す)');
+  showMessage('AI がプレイ中 (I: 交代  V: AIの視界  [ ]: 速度  \\: 一時停止)');
 }
 
 function disableAI() {
@@ -97,7 +108,18 @@ document.addEventListener('keydown', e => {
 
   // 画面まわり(World の外の話)。AI がプレイ中でも操作できる
   if (e.code === 'KeyI') { toggleAI(); return; }
+  if (e.code === 'KeyV') { ui.showVision = !ui.showVision; return; }
   if (e.code === 'KeyM') { ui.showMap = !ui.showMap; return; }
+
+  // 再生コントロール (AI デモ・リプレイの観察用)
+  if (ai) {
+    if (e.code === 'BracketLeft') { speedIdx = Math.max(0, speedIdx - 1); showMessage(`速度 x${SPEEDS[speedIdx]}`); return; }
+    if (e.code === 'BracketRight') { speedIdx = Math.min(SPEEDS.length - 1, speedIdx + 1); showMessage(`速度 x${SPEEDS[speedIdx]}`); return; }
+    if (e.code === 'Backslash') { paused = !paused; showMessage(paused ? '一時停止' : '再開'); return; }
+    if (e.code === 'Period') { stepOnce = true; paused = true; return; }        // コマ送り (1行動)
+    if (e.code === 'KeyO') { saveReplay(); return; }                            // リプレイを保存
+    if (e.code === 'KeyL') { loadReplayFile(); return; }                        // リプレイを読み込む
+  }
   if (e.code === 'KeyB') { ui.showRearview = !ui.showRearview; showMessage(ui.showRearview ? 'バックミラー ON' : 'バックミラー OFF'); return; }
   if (e.code === 'KeyP') { Sound.toggleMute(); showMessage(Sound.muted ? 'サウンド OFF' : 'サウンド ON'); return; }
 
@@ -170,12 +192,53 @@ function aiAutoAdvance(dt) {
   if (ai.endT < AI_END_WAIT) return;
   ai.endT = 0;
 
+  // シードを明示して仕切り直す。こうしておくと「シード + 行動列」だけで
+  // そのステージのプレイを完全に再現できる (リプレイ)
   const i = curWorld.level.index;
-  if (curWorld.state === 'dead') curWorld.reset(i);                  // 同じステージをやり直す
-  else if (curWorld.state === 'levelEnd') curWorld.reset((i + 1) % LEVELS.length);
-  else curWorld.reset(0);
+  const next = curWorld.state === 'levelEnd' ? (i + 1) % LEVELS.length
+    : curWorld.state === 'dead' ? i : 0;
+  curWorld.reset(next, randSeed());
   curWorld.drainEvents();
+  ai.script = null;   // リプレイを見終わったら、その先は方策に任せる
   ai.syncLevel();
+}
+
+// ======================= リプレイ =======================
+// World は決定的なので、シードと行動列だけあればプレイを寸分違わず再現できる。
+// 観測も報酬も要らない。1ステージぶんで数KBにしかならない。
+
+function saveReplay() {
+  if (!ai || !ai.record || !ai.record.actions.length) { showMessage('記録がない'); return; }
+  const data = JSON.stringify(ai.record);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+  a.download = `hellgrid-replay-E1M${ai.record.level + 1}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showMessage(`リプレイを保存 (${ai.record.actions.length} 行動, ${(data.length / 1024) | 0}KB)`);
+}
+
+function playReplay(data) {
+  if (!AI_AVAILABLE) return;
+  if (!policy) policy = new Policy(POLICY);
+  if (!curWorld) { Sound.init(); curWorld = new World({ seed: data.seed, level: data.level }); ui.screen = 'game'; }
+  curWorld.reset(data.level, data.seed);
+  curWorld.drainEvents();
+  ai = new AIDriver(curWorld, policy, data.actions);
+  document.exitPointerLock();
+  showMessage(`リプレイ再生 (${data.actions.length} 行動)`);
+}
+
+function loadReplayFile() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/json';
+  input.onchange = () => {
+    const f = input.files[0];
+    if (!f) return;
+    f.text().then(t => playReplay(JSON.parse(t))).catch(e => showMessage('リプレイが読めない: ' + e.message));
+  };
+  input.click();
 }
 
 // ======================= ループ =======================
@@ -196,16 +259,24 @@ function frame(now) {
   const w = curWorld;
   if (!ai) w.shootHeld = mouseDown && pointerLocked;
 
-  // 固定タイムステップ。積み残しが多すぎるときは捨てる(タブ復帰など)
-  acc += dt;
-  if (acc > SIM_DT * MAX_STEPS_PER_FRAME) acc = SIM_DT * MAX_STEPS_PER_FRAME;
-  while (acc >= SIM_DT) {
-    if (ai && w.state === 'playing') ai.preStep();   // 4シムステップに1回だけ推論する
-    w.step(SIM_DT);
-    acc -= SIM_DT;
+  // 固定タイムステップ。ここで dt をいじっても World の物理は一切変わらない
+  // (step に渡すのは常に SIM_DT)。変わるのは「1秒に何ステップ進めるか」だけ。
+  const speed = ai ? SPEEDS[speedIdx] : 1;
+  if (ai && paused) {
+    if (stepOnce) { for (let i = 0; i < AI_FRAME_SKIP; i++) { ai.preStep(); w.step(SIM_DT); } stepOnce = false; }
+    acc = 0;
+  } else {
+    acc += dt * speed;
+    const maxAcc = SIM_DT * MAX_STEPS_PER_FRAME * Math.max(1, speed);
+    if (acc > maxAcc) acc = maxAcc;
+    while (acc >= SIM_DT) {
+      if (ai && w.state === 'playing') ai.preStep();   // 4シムステップに1回だけ推論する
+      w.step(SIM_DT);
+      acc -= SIM_DT;
+    }
   }
   handleEvents(w.drainEvents());
-  if (ai) aiAutoAdvance(dt);
+  if (ai && !paused) aiAutoAdvance(dt * speed);
 
   bindWorld(w);
   renderView();
@@ -214,7 +285,10 @@ function frame(now) {
   renderHUD();
   if (ui.showMap) renderMinimap();
   renderOverlays(dt);
-  if (ai) renderAIBadge();
+  if (ai) {
+    if (ui.showVision) renderAIVision(ai);
+    renderAIBadge();
+  }
 
   const uiTh = TH.ui;
   const lv = w.level;
@@ -258,11 +332,12 @@ function renderAIBadge() {
   ctx.strokeStyle = 'rgba(64,224,128,0.5)';
   ctx.strokeRect(8.5, VIEW_H - 47.5, 215, 39);
   ctx.font = 'bold 13px monospace';
-  ctx.fillStyle = '#40e080';
-  ctx.fillText('● AI PLAYING', 16, VIEW_H - 31);
+  ctx.fillStyle = ai.script ? '#e0b040' : '#40e080';
+  ctx.fillText(ai.script ? '▶ REPLAY' : '● AI PLAYING', 16, VIEW_H - 31);
   ctx.font = 'bold 11px monospace';
   ctx.fillStyle = 'rgba(220,220,225,0.75)';
-  ctx.fillText(`${lv.def.name}   出口まで ${d < 0 ? '?' : d} 歩`, 16, VIEW_H - 16);
+  const sp = paused ? '一時停止' : SPEEDS[speedIdx] === 1 ? '' : `x${SPEEDS[speedIdx]}`;
+  ctx.fillText(`${lv.def.name}  出口まで ${d < 0 ? '?' : d}歩  ${sp}`, 16, VIEW_H - 16);
   ctx.restore();
 }
 
@@ -271,7 +346,13 @@ function renderAIBadge() {
 // そのままグローバルとして読み書きできる。
 globalThis.HG = {
   get world() { return curWorld; },
+  get ai() { return ai; },
   newGame,
+  enableAI,
+  saveReplay,
+  playReplay,
+  get replay() { return ai && ai.record; },
+  setSpeed(x) { const i = SPEEDS.indexOf(x); if (i >= 0) speedIdx = i; },
   loadLevel(i) {
     if (!curWorld) newGame();
     curWorld.loadLevel(i);
