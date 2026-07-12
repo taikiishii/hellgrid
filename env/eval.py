@@ -56,8 +56,22 @@ def main() -> None:
     print(f"\n{len(results)} エピソード / stage={args.stage} / {'決定的' if args.deterministic else '確率的'}")
     print(f"  クリア率   {len(cleared) / len(results):>6.1%}  ({len(cleared)}/{len(results)})")
     print(f"  死亡率     {len(dead) / len(results):>6.1%}")
+
+    if STAGES[args.stage]["mode"] == "campaign":
+        # 通しでは「何ステージ進めたか」が本命の指標。
+        # 逆カリキュラム (late) は途中のステージから始めるので、残りの本数で数える
+        n_levels = 5 - min(STAGES[args.stage]["levels"])
+        full = [r for r in results if r["levelsCleared"] >= n_levels]
+        print(f"  完全クリア率 {len(full) / len(results):>6.1%}  ({len(full)}/{len(results)})")
+        print(f"  平均到達ステージ {np.mean([r['levelsCleared'] for r in results]):.2f} / {n_levels}")
+        hist = Counter(r["levelsCleared"] for r in results)
+        for k in range(n_levels + 1):
+            bar = "#" * int(40 * hist[k] / len(results))
+            print(f"    {k}ステージ  {hist[k]:>3}  {bar}")
     print(f"  平均報酬   {np.mean([r['epReward'] for r in results]):>6.1f}")
     print(f"  平均キル率 {np.mean([r['kills'] / max(1, r['totalKills']) for r in results]):>6.1%}")
+    print(f"  平均アイテム取得率 {np.mean([r['itemsGot'] / max(1, r['totalItems']) for r in results]):>6.1%}")
+    print(f"  終了時HP   {np.mean([r['hp'] for r in results]):>6.1f}")
     if cleared:
         print(f"  クリア時の平均所要時間 {np.mean([r['timeSec'] for r in cleared]):.1f}秒")
     print("\n  ステージ別クリア率:")

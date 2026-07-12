@@ -86,6 +86,14 @@ class Policy {
 // 決定的なので、同じシード + 同じ行動列 なら寸分違わず同じプレイが再現される。
 class AIDriver {
   constructor(world, policy, script) {
+    // 重みが古い観測次元で学習されていたら、必ずここで落とす。
+    // Float32Array は範囲外の書き込みを黙って捨てるので、放っておくと観測の後ろ半分が
+    // 欠けたまま「それらしく動く壊れたAI」ができあがる (実際にこれで一度嵌まった)
+    if (policy && policy.obsDim !== OBS_DIM) {
+      throw new Error(
+        `policy: 観測次元が食い違っている (重み=${policy.obsDim}, いまの観測=${OBS_DIM})。` +
+        'tools/export-policy.py で書き出し直すこと');
+    }
     this.world = world;
     this.policy = policy;
     this.script = script || null;

@@ -53,8 +53,16 @@ function newGame(withAI = false) {
 
 function enableAI() {
   if (!AI_AVAILABLE || !curWorld) return;
-  if (!policy) policy = new Policy(POLICY);   // 重みのデコードは初回だけ
-  ai = new AIDriver(curWorld, policy);
+  try {
+    if (!policy) policy = new Policy(POLICY);   // 重みのデコードは初回だけ
+    ai = new AIDriver(curWorld, policy);
+  } catch (e) {
+    // 観測次元が食い違っている等。黙って壊れたAIを動かすより、止めて理由を出す
+    ai = null;
+    console.error(e);
+    showMessage('AIを起動できない: ' + e.message);
+    return;
+  }
   document.exitPointerLock();
   showMessage('AI がプレイ中 (I: 交代  V: AIの視界  [ ]: 速度  \\: 一時停止)');
 }
