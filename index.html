@@ -30,6 +30,13 @@
 <script src="js/sim/rng.js"></script>
 <script src="js/sim/constants.js"></script>
 <script src="js/sim/world.js"></script>
+<!-- AI デモ: 観測と行動の定義は学習時とまったく同じものを使う。
+     js/policy.js は学習済みの重み (tools/export-policy.py が生成)。
+     無くてもゲームは普通に遊べる (AI デモが出ないだけ)。 -->
+<script src="env/obs.js"></script>
+<script src="env/env.js"></script>
+<script src="js/policy.js"></script>
+<script src="js/ai.js"></script>
 <!-- 見た目・音・入力 (ブラウザ専用) -->
 <script src="js/themes.js"></script>
 <script src="js/sound.js"></script>

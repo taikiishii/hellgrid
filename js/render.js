@@ -1384,7 +1384,8 @@ function renderOverlays(dt) {
     ctx.fillStyle = `rgba(${ui.message},${clamp(messageT, 0, 1)})`;
     ctx.fillText(message, 14, 26);
   }
-  if (!pointerLocked && game.state === 'playing') {
+  // AI がプレイ中はマウス操作の案内を出さない (js/main.js の ai)
+  if (!pointerLocked && game.state === 'playing' && !ai) {
     ctx.font = 'bold 14px monospace';
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
     ctx.textAlign = 'center';
@@ -1449,6 +1450,13 @@ function renderTitle() {
 
   ctx.font = 'bold 22px monospace';
   ctx.fillStyle = `rgba(${ui.startColor},${0.6 + 0.4 * Math.sin(performance.now() / 300)})`;
-  ctx.fillText('クリックしてスタート', W / 2, 372);
+  ctx.fillText('クリックしてスタート', W / 2, 368);
+
+  // 学習済みモデル (js/policy.js) があるときだけ AI デモを案内する
+  if (typeof POLICY !== 'undefined') {
+    ctx.font = 'bold 15px monospace';
+    ctx.fillStyle = '#40e080';
+    ctx.fillText('I キー: AI にプレイさせる (強化学習で学習した方策)', W / 2, 392);
+  }
   ctx.textAlign = 'left';
 }

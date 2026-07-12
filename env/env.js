@@ -206,4 +206,9 @@ class HellgridEnv {
   }
 }
 
-Object.assign(globalThis, { HellgridEnv, ACTION_NVEC, OBS_DIM, REWARD });
+// TURN_UNITS などはブラウザの AI ドライバ (js/ai.js) も使う。
+// 学習時とデモで行動の解釈がズレると、学習した方策がそのまま動かなくなる。
+Object.assign(globalThis, {
+  HellgridEnv, ACTION_NVEC, OBS_DIM, REWARD,
+  TURN_UNITS, PITCH_UNITS, WEAPON_BY_ACTION,
+});
