@@ -27,6 +27,11 @@
     exitFound: 5.0,      // 出口スイッチを初めて視界に入れた
     keyFound: 2.0,       // キーカードを初めて視界に入れた
     progress: 0.1,       // 見つけた目標へ既知マップ上で1歩近づいた (ポテンシャル整形)
+    // 目標をまだ見つけていない間、最寄りのフロンティア (未知との境界) へ近づくと
+    // 加点する。newTile だけだと発見の瞬間しか報酬が出ず、次のフロンティアまでの
+    // 移動区間が報酬の砂漠になって探索がループする (maze15 で実測: 失敗の全てが
+    // 「出口未発見のまま停滞」)。progress より小さくして、目標発見後は出口優先
+    frontier: 0.05,
     revisit: -0.01,      // 同じタイルをうろつく (訪問回数に応じて最大まで漸増)
     // ---- v1 から引き継ぎ ----
     damageDealt: 0.01,
@@ -105,6 +110,7 @@
       this.mem.init(this.world.level);
       this.mem.update(this.world, 0);
       this.goal = computeKnownGoal(this.world, this.mem);
+      this.frontier = computeFrontierField(this.world, this.mem);
       this.exitSeen = this.mem.exits.length > 0;
       this.seenRed = this.mem.seenRed;
       this.seenBlue = this.mem.seenBlue;
@@ -197,6 +203,17 @@
         const dPrev = knownGoalDistAt(this.goal, lv, this.prevTileX, this.prevTileY);
         const dCur = knownGoalDistAt(this.goal, lv, cx, cy);
         if (dPrev >= 0 && dCur >= 0) reward += (dPrev - dCur) * REWARD2.progress;
+        this.frontier = null;   // 目標優先。フロンティア場は使わなくなったら捨てる
+      } else {
+        // ---- 目標をまだ見つけていない: フロンティアへのポテンシャル整形 ----
+        // 差分は「前ステップ時点の知識で張った場」で取る。行動した時点で正しかった
+        // 方向に報い、発見でフロンティアが移動しても遡って罰しない。
+        // 全タイル探索済みで場が消えたら整形なし
+        if (!this.frontier) this.frontier = computeFrontierField(w, this.mem);
+        const fPrev = knownGoalDistAt(this.frontier, lv, this.prevTileX, this.prevTileY);
+        const fCur = knownGoalDistAt(this.frontier, lv, cx, cy);
+        if (fPrev >= 0 && fCur >= 0) reward += (fPrev - fCur) * REWARD2.frontier;
+        if (newTiles > 0 || gotKey) this.frontier = computeFrontierField(w, this.mem);
       }
       this.prevTileX = cx; this.prevTileY = cy;
 

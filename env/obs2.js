@@ -276,6 +276,29 @@
     return goal.field[iy * level.w + ix];
   }
 
+  // フロンティア (= 未知の隣接タイルを持つ既知の床) までの距離場。
+  // 「新タイル発見」報酬は発見の瞬間にしか出ず、次のフロンティアまで既知の通路を
+  // 歩く区間が報酬の砂漠になる (実測: 探索がループして停滞する)。この場で
+  // ポテンシャル整形をかけて、砂漠の全区間に「未知へ向かう」勾配を立てる。
+  // 自分が見たタイルの地図から計算するので、カンニングではない (Lv1 の線引き)。
+  function computeFrontierField(world, mem) {
+    const level = world.level, keys = world.player.keys;
+    const w = level.w, h = level.h, known = mem.known;
+    const seeds = [];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (!known[i] || !knownWalkable(mem, level, x, y, keys)) continue;
+        if ((x > 0 && !known[i - 1]) || (x < w - 1 && !known[i + 1]) ||
+            (y > 0 && !known[i - w]) || (y < h - 1 && !known[i + w])) {
+          seeds.push([x, y]);
+        }
+      }
+    }
+    if (!seeds.length) return { field: null, target: 'none' };   // 全て探索済み
+    return { field: bfsKnownField(mem, level, seeds, keys), target: 'frontier' };
+  }
+
   // ======================= レイ (v1 と同じ・正当ブロック) =======================
 
   function rayWall2(world, x, y, dx, dy) {
@@ -494,7 +517,7 @@
   }
 
   Object.assign(globalThis, {
-    OBS2_DIM, ExploreMemory, buildObs2, computeKnownGoal, knownGoalDistAt,
+    OBS2_DIM, ExploreMemory, buildObs2, computeKnownGoal, knownGoalDistAt, computeFrontierField,
     OBS2_LAYOUT: {
       rays: [N_RAYS, RAY_CH], local: [LOCAL, LOCAL, LOCAL_CH],
       global: [GLOB, GLOB, GLOB_CH], scalars: N_SCALARS,
