@@ -71,6 +71,14 @@ STAGES = {
         "mazeMix": 0.2, "mazeSize": 21, "mazeBraid": 0.15, "mazeRooms": 5,
         "maxSteps": 2000,
     },
+    # 密度カリキュラムの続き。mix2 で E1M4 が 0% -> 18% (敵100%評価) まで
+    # 立ち上がったので、範囲を上に寄せて難しい側の練習量を増やす
+    "e1m-mix3": {
+        "env2": True, "levels": [0, 1, 2, 3, 4], "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.5, 1.0],
+        "mazeMix": 0.2, "mazeSize": 21, "mazeBraid": 0.15, "mazeRooms": 5,
+        "maxSteps": 2000,
+    },
 }
 
 
