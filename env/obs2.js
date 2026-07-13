@@ -41,6 +41,10 @@
 
   const MAX_D = 24;                 // 視界距離の上限 (タイル)
   const VIS_RAYS = 48;              // 視界マーキング用レイ (観測レイ24本より密)
+
+  // vm コンテキストではグローバル (Math 含む) へのアクセスがプロキシ経由で遅い。
+  // ホットループで使う関数はクロージャに束縛しておく (実測で観測生成が数倍速くなる)
+  const mAbs = Math.abs, mHypot = Math.hypot, mMin = Math.min, mMax = Math.max;
   const ENEMY_MEMORY_S = 6;         // 敵の目撃情報が薄れきるまでの秒数
   const ENEMY_ORDER = ['zombie', 'sergeant', 'imp', 'demon', 'knight', 'floater'];
   const SUPPLY_ITEMS = 'hHaAsSpV';
@@ -56,6 +60,19 @@
       this.w = level.w; this.h = level.h;
       this.known = new Uint8Array(n);       // 1 = 見たことがあるタイル
       this.visits = new Uint16Array(n);     // 踏んだ回数 (うろつき検出・軌跡表示)
+      // 全体マップ用: タイル → 24x24 セルの対応 (毎ステップ計算すると遅いので前計算)
+      this.gScale = mMax(level.w, level.h) / GLOB;   // タイル / セル
+      this.cellOf = new Int32Array(n);
+      this.cellCnt = new Float32Array(GLOB * GLOB);
+      for (let y = 0; y < level.h; y++) {
+        const gy = mMin(GLOB - 1, (y / this.gScale) | 0);
+        for (let x = 0; x < level.w; x++) {
+          const gx = mMin(GLOB - 1, (x / this.gScale) | 0);
+          const c = gy * GLOB + gx;
+          this.cellOf[y * level.w + x] = c;
+          this.cellCnt[c]++;
+        }
+      }
       this.visStamp = new Int32Array(n).fill(-1);  // 最後に視界に入れたステップ
       this.enemyT = new Float32Array(n).fill(-1);  // 敵を最後に見た時刻 (level.time)
       this.itemSeen = new Uint8Array(n);    // 1 = そこにアイテムがあると思っている
@@ -109,9 +126,9 @@
       for (let r = 0; r < VIS_RAYS; r++) {
         const camX = 2 * (r + 0.5) / VIS_RAYS - 1;
         let dx = p.dirX + p.planeX * camX, dy = p.dirY + p.planeY * camX;
-        const len = Math.hypot(dx, dy); dx /= len; dy /= len;
+        const len = mHypot(dx, dy); dx /= len; dy /= len;
         let mapX = px, mapY = py;
-        const deltaX = Math.abs(1 / dx), deltaY = Math.abs(1 / dy);
+        const deltaX = mAbs(1 / dx), deltaY = mAbs(1 / dy);
         let stepX, stepY, sideX, sideY;
         if (dx < 0) { stepX = -1; sideX = (p.x - mapX) * deltaX; }
         else { stepX = 1; sideX = (mapX + 1 - p.x) * deltaX; }
@@ -143,7 +160,7 @@
         const ti = (e.y | 0) * this.w + (e.x | 0);
         liveEnemy.add(ti);
         if (!inFov(e.x, e.y)) continue;
-        if (Math.hypot(e.x - p.x, e.y - p.y) > MAX_D) continue;
+        if (mHypot(e.x - p.x, e.y - p.y) > MAX_D) continue;
         if (!world.hasLineOfSight(p.x, p.y, e.x, e.y, p.z + EYE, e.z + EYE)) continue;
         this.enemyT[ti] = level.time;
       }
@@ -151,7 +168,7 @@
         const tx = it.x | 0, ty = it.y | 0, ti = ty * this.w + tx;
         liveItem.add(ti);
         if (!inFov(it.x, it.y)) continue;
-        if (Math.hypot(it.x - p.x, it.y - p.y) > MAX_D) continue;
+        if (mHypot(it.x - p.x, it.y - p.y) > MAX_D) continue;
         if (!world.hasLineOfSight(p.x, p.y, it.x, it.y, p.z + EYE, it.z + 0.3)) continue;
         if (!this.itemSeen[ti]) {
           this.itemSeen[ti] = 1;
@@ -178,7 +195,7 @@
       // 訪問回数 (タイルをまたいだときだけ加算)
       if (px !== this.lastTileX || py !== this.lastTileY) {
         const i = py * this.w + px;
-        this.visits[i] = Math.min(65535, this.visits[i] + 1);
+        this.visits[i] = mMin(65535, this.visits[i] + 1);
         this.lastTileX = px; this.lastTileY = py;
       }
 
@@ -265,7 +282,7 @@
     const level = world.level;
     const eyeZ = world.player.z + EYE;
     let mapX = x | 0, mapY = y | 0;
-    const deltaX = Math.abs(1 / dx), deltaY = Math.abs(1 / dy);
+    const deltaX = mAbs(1 / dx), deltaY = mAbs(1 / dy);
     let stepX, stepY, sideX, sideY;
     if (dx < 0) { stepX = -1; sideX = (x - mapX) * deltaX; }
     else { stepX = 1; sideX = (mapX + 1 - x) * deltaX; }
@@ -294,7 +311,7 @@
     for (let i = 0; i < N_RAYS; i++) {
       const camX = 2 * (i + 0.5) / N_RAYS - 1;
       let dx = p.dirX + p.planeX * camX, dy = p.dirY + p.planeY * camX;
-      const len = Math.hypot(dx, dy); dx /= len; dy /= len;
+      const len = mHypot(dx, dy); dx /= len; dy /= len;
       const b = RAYS_OFF + i * RAY_CH;
       const hit = rayWall2(world, p.x, p.y, dx, dy);
       o[b + 0] = hit.dist / MAX_D;
@@ -321,7 +338,7 @@
       if (e.dormant || e.state === 'dead') continue;
       const i = rayOf(e.x, e.y);
       if (i < 0) continue;
-      const d = Math.hypot(e.x - p.x, e.y - p.y);
+      const d = mHypot(e.x - p.x, e.y - p.y);
       if (d > MAX_D) continue;
       const b = RAYS_OFF + i * RAY_CH;
       const nd = d / MAX_D;
@@ -335,7 +352,7 @@
     for (const it of level.items) {
       const i = rayOf(it.x, it.y);
       if (i < 0) continue;
-      const d = Math.hypot(it.x - p.x, it.y - p.y);
+      const d = mHypot(it.x - p.x, it.y - p.y);
       if (d > MAX_D) continue;
       const b = RAYS_OFF + i * RAY_CH;
       const nd = d / MAX_D;
@@ -350,7 +367,7 @@
       if (br.dead) continue;
       const i = rayOf(br.x, br.y);
       if (i < 0) continue;
-      const d = Math.hypot(br.x - p.x, br.y - p.y);
+      const d = mHypot(br.x - p.x, br.y - p.y);
       if (d > MAX_D) continue;
       const b = RAYS_OFF + i * RAY_CH;
       const nd = d / MAX_D;
@@ -376,7 +393,7 @@
         if (ch === null) {
           o[c + 2 * plane] = 1;
           o[c + 4 * plane] = level.water[wy][wx] ? 1 : 0;
-          o[c + 5 * plane] = Math.min(1, level.heights[wy][wx] / 2);
+          o[c + 5 * plane] = mMin(1, level.heights[wy][wx] / 2);
         } else if (ch === 'D') {
           o[c + 3 * plane] = 1;
         } else if (ch === 'R') {
@@ -388,7 +405,7 @@
           if (ch === 'X') o[c + 8 * plane] = 1;       // 出口は壁 + 出口チャネル
         }
         const et = mem.enemyT[ti];
-        if (et >= 0) o[c + 6 * plane] = Math.max(0, 1 - (level.time - et) / ENEMY_MEMORY_S);
+        if (et >= 0) o[c + 6 * plane] = mMax(0, 1 - (level.time - et) / ENEMY_MEMORY_S);
         if (mem.itemSeen[ti]) o[c + 7 * plane] = 1;
       }
     }
@@ -396,39 +413,37 @@
     // ---- global: レベル全体の粗い既知マップ (絶対座標・北が上) ----
     //  ch0 未探索率  ch1 壁  ch2 見たアイテム  ch3 軌跡(訪問回数)  ch4 見た出口
     //  ch5 自機 (1=位置, 0.5=向いている方向の隣セル)
+    // タイル→セルの対応 (mem.cellOf) は init で前計算済み。タイルを1回なめるだけ
     const gplane = GLOB * GLOB;
-    const scale = Math.max(level.w, level.h) / GLOB;   // タイル / セル
-    for (let gy = 0; gy < GLOB; gy++) {
-      for (let gx = 0; gx < GLOB; gx++) {
-        const x0 = Math.floor(gx * scale), y0 = Math.floor(gy * scale);
-        if (x0 >= level.w || y0 >= level.h) continue;  // 場外セルは全ch 0
-        const x1 = Math.min(level.w, Math.max(x0 + 1, Math.ceil((gx + 1) * scale)));
-        const y1 = Math.min(level.h, Math.max(y0 + 1, Math.ceil((gy + 1) * scale)));
-        let cnt = 0, unk = 0, wall = 0, item = 0, vis = 0, exit = 0;
-        for (let y = y0; y < y1; y++) {
-          for (let x = x0; x < x1; x++) {
-            const ti = y * level.w + x;
-            cnt++;
-            if (!mem.known[ti]) { unk++; continue; }
-            const ch = level.grid[y][x];
-            if (ch === 'X') exit = 1;
-            else if (ch !== null && ch !== 'D' && ch !== 'R' && ch !== 'B') wall = 1;
-            if (mem.itemSeen[ti]) item = 1;
-            if (mem.visits[ti] > vis) vis = mem.visits[ti];
-          }
+    const cellOf = mem.cellOf, known = mem.known, itemSeen = mem.itemSeen, mvisits = mem.visits;
+    for (let y = 0; y < level.h; y++) {
+      const row = level.grid[y];
+      const base = y * level.w;
+      for (let x = 0; x < level.w; x++) {
+        const ti = base + x;
+        const c = GLOB_OFF + cellOf[ti];
+        if (!known[ti]) { o[c] += 1; continue; }   // 後段でセル内タイル数で割る
+        const ch = row[x];
+        if (ch === 'X') o[c + 4 * gplane] = 1;
+        else if (ch !== null && ch !== 'D' && ch !== 'R' && ch !== 'B') o[c + 1 * gplane] = 1;
+        if (itemSeen[ti]) o[c + 2 * gplane] = 1;
+        const v = mvisits[ti];
+        if (v > 0) {
+          const t = c + 3 * gplane;
+          const nv = v >= 8 ? 1 : v / 8;
+          if (nv > o[t]) o[t] = nv;
         }
-        const c = GLOB_OFF + gy * GLOB + gx;
-        o[c] = unk / cnt;
-        o[c + 1 * gplane] = wall;
-        o[c + 2 * gplane] = item;
-        o[c + 3 * gplane] = Math.min(1, vis / 8);
-        o[c + 4 * gplane] = exit;
       }
     }
-    const pgx = Math.min(GLOB - 1, (p.x / scale) | 0), pgy = Math.min(GLOB - 1, (p.y / scale) | 0);
+    for (let i = 0; i < gplane; i++) {             // 未探索カウント → 率
+      const cnt = mem.cellCnt[i];
+      if (cnt > 1 && o[GLOB_OFF + i] > 0) o[GLOB_OFF + i] /= cnt;
+    }
+    const gs = mem.gScale;
+    const pgx = mMin(GLOB - 1, (p.x / gs) | 0), pgy = mMin(GLOB - 1, (p.y / gs) | 0);
     o[GLOB_OFF + 5 * gplane + pgy * GLOB + pgx] = 1;
-    const fgx = Math.min(GLOB - 1, Math.max(0, ((p.x + p.dirX * 1.5) / scale) | 0));
-    const fgy = Math.min(GLOB - 1, Math.max(0, ((p.y + p.dirY * 1.5) / scale) | 0));
+    const fgx = mMin(GLOB - 1, mMax(0, ((p.x + p.dirX * 1.5) / gs) | 0));
+    const fgy = mMin(GLOB - 1, mMax(0, ((p.y + p.dirY * 1.5) / gs) | 0));
     const fc = GLOB_OFF + 5 * gplane + fgy * GLOB + fgx;
     if (o[fc] < 0.5) o[fc] = 0.5;
 
@@ -437,32 +452,32 @@
     const gd = knownGoalDistAt(goal, lv, p.x, p.y);
     o[s + 0] = p.health / 100;
     o[s + 1] = p.armor / ARMOR_MAX;
-    o[s + 2] = Math.min(1, p.bullets / 50);
-    o[s + 3] = Math.min(1, p.shells / 20);
+    o[s + 2] = mMin(1, p.bullets / 50);
+    o[s + 3] = mMin(1, p.shells / 20);
     o[s + 4] = p.hasShotgun ? 1 : 0;
     o[s + 5] = p.weapon === 'pistol' ? 1 : 0;
     o[s + 6] = p.weapon === 'shotgun' ? 1 : 0;
     o[s + 7] = p.weapon === 'knife' ? 1 : 0;
-    o[s + 8] = Math.min(1, p.shootCd);
+    o[s + 8] = mMin(1, p.shootCd);
     o[s + 9] = p.pitch / PITCH_MAX;
     o[s + 10] = p.keys.red ? 1 : 0;
     o[s + 11] = p.keys.blue ? 1 : 0;
     o[s + 12] = mem.totalFloor ? mem.knownFloor / mem.totalFloor : 1;   // 探索率
-    o[s + 13] = Math.min(1, (mem.stepNo - mem.lastNewStep) / 100);      // 新発見からの経過
+    o[s + 13] = mMin(1, (mem.stepNo - mem.lastNewStep) / 100);      // 新発見からの経過
     o[s + 14] = mem.exits.length ? 1 : 0;                               // 出口を見つけたか
-    o[s + 15] = gd < 0 ? 1 : Math.min(1, gd / 40);                      // 目標までの歩数 (既知マップ)
+    o[s + 15] = gd < 0 ? 1 : mMin(1, gd / 40);                      // 目標までの歩数 (既知マップ)
     o[s + 16] = gd >= 0 ? 1 : 0;                                        // 目標へ到達可能か
     o[s + 17] = mem.seenRed ? 1 : 0;
     o[s + 18] = mem.seenBlue ? 1 : 0;
     o[s + 19] = goal && goal.target === 'key' ? 1 : 0;
-    o[s + 20] = Math.min(1, p.z / 2);
-    o[s + 21] = Math.min(1, lv.time / 300);
+    o[s + 20] = mMin(1, p.z / 2);
+    o[s + 21] = mMin(1, lv.time / 300);
 
     // 最寄りの「見えている」敵 (v1 と同一)
     let nd = Infinity, nx = 0, ny = 0;
     for (const e of lv.enemies) {
       if (e.dormant || e.state === 'dead') continue;
-      const d = Math.hypot(e.x - p.x, e.y - p.y);
+      const d = mHypot(e.x - p.x, e.y - p.y);
       if (d >= nd || d > 16) continue;
       if (!world.hasLineOfSight(p.x, p.y, e.x, e.y, p.z + EYE, e.z + EYE)) continue;
       nd = d; nx = e.x - p.x; ny = e.y - p.y;
