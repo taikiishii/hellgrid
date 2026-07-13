@@ -191,21 +191,22 @@ function advance() {
 
 // AI デモは止まらずに進み続ける。クリア/死亡から少し待って自動で次へ。
 //
-// ステージごとに reset() で仕切り直すのは、いまの方策が「1ステージ単位」(stage=single)
-// で学習されているから。HPや弾を持ち越す通し(campaign)の方策はまだ学習していないので、
-// 持ち越したまま走らせると訓練時と条件が変わって途中で力尽きる。
+// 方策は「通し」(stage=campaign) で学習されているので、ステージをまたいで HP・弾・
+// アーマーを持ち越したまま E1M1 から E1M5 まで走らせる。これが訓練時と同じ条件。
+// 死んだら、または全ステージ終わったら、E1M1 から仕切り直す。
 function aiAutoAdvance(dt) {
   if (curWorld.state === 'playing') { ai.endT = 0; return; }
   ai.endT += dt;
   if (ai.endT < AI_END_WAIT) return;
   ai.endT = 0;
 
-  // シードを明示して仕切り直す。こうしておくと「シード + 行動列」だけで
-  // そのステージのプレイを完全に再現できる (リプレイ)
-  const i = curWorld.level.index;
-  const next = curWorld.state === 'levelEnd' ? (i + 1) % LEVELS.length
-    : curWorld.state === 'dead' ? i : 0;
-  curWorld.reset(next, randSeed());
+  if (curWorld.state === 'levelEnd') {
+    curWorld.nextLevel();          // HP・弾を持ち越して次のステージへ
+  } else {
+    // 死亡 / 全クリア → E1M1 から。シードを明示すると「シード + 行動列」だけで
+    // そのプレイを完全に再現できる (リプレイ)
+    curWorld.reset(0, randSeed());
+  }
   curWorld.drainEvents();
   ai.script = null;   // リプレイを見終わったら、その先は方策に任せる
   ai.syncLevel();
