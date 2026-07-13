@@ -201,6 +201,9 @@ python tools/analyze-gradient-follow.py   … 移動方向が出口/回復のど
 **→ 設計と実装の詳しい解説: [docs/machine-learning.md](docs/machine-learning.md)**
 (強化学習が初めての人向け。観測・報酬設計・カリキュラム・実際に踏んだバグまで)
 
+**→ 次のプロジェクト: [docs/next-partial-observability.md](docs/next-partial-observability.md)**
+(「見たものだけ」で学習させる。現在の観測の**74%はチート**であることの棚卸しと、その設計)
+
 ### 環境の設計
 
 このゲームはレイキャスターなので、**画面を描いてCNNに見せる必要がありません**。
