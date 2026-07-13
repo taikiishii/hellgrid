@@ -32,6 +32,13 @@ const ENV_FILES = [
   'env/env.js',
 ];
 
+// 探索版 (フォグ・オブ・ウォー観測 + ランダム迷路)。v1 とは独立に開発する
+const ENV2_FILES = [
+  'env/mazegen.js',
+  'env/obs2.js',
+  'env/env2.js',
+];
+
 function load(files) {
   const ctx = vm.createContext({ console });
   for (const f of files) {
@@ -45,4 +52,7 @@ function createSim() { return load(SIM_FILES); }
 // HellgridEnv まで込みのコンテキスト。1つのコンテキストに Env を何個でも並べられる
 function createEnvContext() { return load(SIM_FILES.concat(ENV_FILES)); }
 
-module.exports = { createSim, createEnvContext, SIM_FILES, ENV_FILES };
+// 探索版 (HellgridEnv2)。v1 の env.js/obs.js は読み込まない
+function createEnvContext2() { return load(SIM_FILES.concat(ENV2_FILES)); }
+
+module.exports = { createSim, createEnvContext, createEnvContext2, SIM_FILES, ENV_FILES, ENV2_FILES };
