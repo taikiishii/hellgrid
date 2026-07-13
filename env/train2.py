@@ -49,6 +49,29 @@ STAGES = {
 }
 
 
+class EntCoefAnneal(BaseCallback):
+    """ent_coef を学習の進行に合わせて線形に減衰させる。
+
+    固定 (0.01) のままだと、VecNormalize が報酬をリターンの走行標準偏差で割り続ける
+    ため、方策が上達するほど勾配の信号が縮み、固定のエントロピーボーナスが相対的に
+    勝ってしまう。maze15 (20M步) で実測: エントロピーが 5.1→6.2 と単調に膨らみ、
+    clear_rate が 75%→61% に劣化した。終盤は圧力を弱めて方策を固めさせる。
+    """
+
+    def __init__(self, start: float = 0.01, end: float = 0.001):
+        super().__init__()
+        self.start = start
+        self.end = end
+
+    def _on_rollout_start(self) -> None:
+        # _current_progress_remaining: 1.0 (開始) -> 0.0 (終了)
+        p = self.model._current_progress_remaining
+        self.model.ent_coef = self.end + (self.start - self.end) * p
+
+    def _on_step(self) -> bool:
+        return True
+
+
 class ExploreCallback(BaseCallback):
     """探索版の学習指標。クリア率に加えて「出口発見率」と「カバレッジ」を見る。
 
@@ -146,6 +169,7 @@ def main() -> None:
         tb_log_name=args.stage,
         callback=[
             ExploreCallback(),
+            EntCoefAnneal(),
             CheckpointCallback(save_freq=max(1, 2_000_000 // args.envs), save_path=str(out), name_prefix="ckpt"),
         ],
     )
