@@ -1,0 +1,154 @@
+"""探索版 (env2 = フォグ・オブ・ウォー観測) の PPO 学習。
+
+v1 の train.py とは独立。エージェントは「見たものだけ」で出口を探す。
+docs/next-partial-observability.md のカリキュラム第1段階から:
+
+    1. maze9    9x9 のランダム迷路。まず「探索して出口を見つける」が成立するか
+    2. maze11   11x11。本命の第1段階
+    3. maze15   15x15 + braid (ループあり)。丸暗記が効かないことはマップ生成が保証する
+    4. (以降)   敵・アイテムを足す → E1M1〜5 へ転移。設計書 §4 参照
+
+使い方:
+
+    .venv/Scripts/python env/train2.py --stage maze9  --steps 3000000
+    .venv/Scripts/python env/train2.py --stage maze11 --steps 8000000 --init runs2/maze9/final.zip
+
+    tensorboard --logdir runs2/
+
+観測に「既知マップ」(記憶) が入っているので、第1段階は LSTM なしの MLP で試す
+(設計書の Lv1.5 相当)。これで頭打ちになったら RecurrentPPO に切り替える。
+"""
+from __future__ import annotations
+
+import argparse
+import pathlib
+import sys
+
+import numpy as np
+from stable_baselines3 import PPO
+from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
+from stable_baselines3.common.vec_env import VecMonitor, VecNormalize
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from hellgrid_env import HellgridVecEnv  # noqa: E402
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+STAGES = {
+    # 迷路サイズは奇数。maxSteps は「ランダム方策でもたまに解ける」程度に余裕を持たせる
+    "maze9":  {"env2": True, "mazeSize": 9,  "maxSteps": 400},
+    "maze11": {"env2": True, "mazeSize": 11, "maxSteps": 600},
+    "maze15": {"env2": True, "mazeSize": 15, "mazeBraid": 0.15, "maxSteps": 900},
+    # 転移: 既存ステージを探索観測でプレイ (敵なしから)
+    "e1m1-nav": {"env2": True, "levels": [0], "noEnemies": True, "noItems": True, "maxSteps": 1500},
+}
+
+
+class ExploreCallback(BaseCallback):
+    """探索版の学習指標。クリア率に加えて「出口発見率」と「カバレッジ」を見る。
+
+    クリア率が上がらないとき、原因が「見つけられない」(exit_seen が低い) のか
+    「見つけたのに辿り着けない」(exit_seen は高いのに clear が低い) のかを
+    切り分けられるようにしておく。
+    """
+
+    def __init__(self, window: int = 200):
+        super().__init__()
+        self.window = window
+        self.rewards: list[float] = []
+        self.cleared: list[int] = []
+        self.lengths: list[int] = []
+        self.exit_seen: list[int] = []
+        self.coverage: list[float] = []
+
+    def _on_step(self) -> bool:
+        for info in self.locals.get("infos", []):
+            ep = info.get("episode")
+            if ep is None:
+                continue
+            self.rewards.append(ep["r"])
+            self.lengths.append(ep["l"])
+            self.cleared.append(info.get("levelsCleared", 0))
+            self.exit_seen.append(info.get("exitSeen", 0))
+            self.coverage.append(info.get("coverage", 0.0))
+        for name in ("rewards", "cleared", "lengths", "exit_seen", "coverage"):
+            buf = getattr(self, name)
+            if len(buf) > self.window:
+                del buf[: -self.window]
+        if self.cleared:
+            self.logger.record("explore/clear_rate", float(np.mean([c > 0 for c in self.cleared])))
+            self.logger.record("explore/exit_seen_rate", float(np.mean(self.exit_seen)))
+            self.logger.record("explore/coverage", float(np.mean(self.coverage)))
+            self.logger.record("explore/ep_reward", float(np.mean(self.rewards)))
+            self.logger.record("explore/ep_len", float(np.mean(self.lengths)))
+        return True
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--stage", choices=list(STAGES), default="maze9")
+    ap.add_argument("--steps", type=int, default=3_000_000)
+    # 観測が v1 の4倍 (5866) なのでロールアウトバッファが太る。
+    # 96 envs x 128 n_steps x 5866 x 4B = 288MB。envs を増やすときはメモリに注意
+    ap.add_argument("--envs", type=int, default=96)
+    ap.add_argument("--workers", type=int, default=12)
+    ap.add_argument("--n-steps", type=int, default=128)
+    ap.add_argument("--init", type=str, default=None, help="前段の重みを引き継ぐ (.zip)")
+    ap.add_argument("--seed", type=int, default=0)
+    args = ap.parse_args()
+
+    out = ROOT / "runs2" / args.stage
+    out.mkdir(parents=True, exist_ok=True)
+
+    venv = HellgridVecEnv(
+        num_envs=args.envs, n_workers=args.workers, cfg=STAGES[args.stage], base_seed=args.seed
+    )
+    # エピソードは最長 900 步 (maze15)。gamma=0.995 で視野 ~200 步 =
+    # 「出口発見 (+5) とクリア (+20) が探索の序盤からでも見える」長さ
+    gamma = 0.995
+
+    venv = VecMonitor(venv)
+    venv = VecNormalize(venv, norm_obs=False, norm_reward=True, gamma=gamma)
+
+    kwargs = dict(
+        n_steps=args.n_steps,
+        batch_size=4096,
+        n_epochs=4,
+        gamma=gamma,
+        gae_lambda=0.95,
+        clip_range=0.2,
+        ent_coef=0.01,
+        learning_rate=3e-4,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        # 学習器が律速 (実測: 学習ループの83%)。512x512 から半減して2倍速にする。
+        # 観測 5866 -> 256 の初段だけで 1.5M パラメータあるので表現力は足りる
+        policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256])),
+        tensorboard_log=str(ROOT / "runs2"),
+        verbose=1,
+        seed=args.seed,
+    )
+
+    print(f"stage={args.stage}  gamma={gamma}  n_steps={args.n_steps}  envs={args.envs}")
+    if args.init:
+        model = PPO.load(args.init, env=venv, **{k: v for k, v in kwargs.items() if k != "policy_kwargs"})
+        print(f"前段の重みを読み込んだ: {args.init}")
+    else:
+        model = PPO("MlpPolicy", venv, **kwargs)
+
+    model.learn(
+        total_timesteps=args.steps,
+        tb_log_name=args.stage,
+        callback=[
+            ExploreCallback(),
+            CheckpointCallback(save_freq=max(1, 2_000_000 // args.envs), save_path=str(out), name_prefix="ckpt"),
+        ],
+    )
+    model.save(str(out / "final"))
+    venv.save(str(out / "vecnorm.pkl"))
+    print(f"保存した: {out / 'final.zip'}")
+    venv.close()
+
+
+if __name__ == "__main__":
+    main()

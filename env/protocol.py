@@ -18,8 +18,14 @@ import numpy as np
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SERVER = ROOT / "env" / "server.js"
 
-OBS_DIM = 1477
+OBS_DIM = 1477    # 従来版 (env/obs.js)
+OBS2_DIM = 5866   # 探索版 (env/obs2.js)。cfg に env2:True を入れると server.js が切り替える
 ACTION_NVEC = [3, 3, 5, 3, 2, 2, 4]
+
+
+def obs_dim_for(cfg: dict | None) -> int:
+    """cfg から観測次元を決める。env2 フラグでフォグ・オブ・ウォー版になる。"""
+    return OBS2_DIM if (cfg or {}).get("env2") else OBS_DIM
 
 # 観測の内訳 (grid を CNN に流したくなったときに切り出せるよう公開しておく)
 # grid の ch6/ch7/ch8 = 出口 / 回復 / 弾薬 へのBFS勾配
@@ -35,6 +41,7 @@ class Worker:
 
     def __init__(self, n_envs: int, cfg: dict | None = None, base_seed: int = 1):
         self.n = n_envs
+        self.obs_dim = obs_dim_for(cfg)
         self.proc = subprocess.Popen(
             ["node", str(SERVER)],
             stdin=subprocess.PIPE,
@@ -42,8 +49,8 @@ class Worker:
             cwd=str(ROOT),
         )
         header, obs = self._call({"cmd": "init", "n": n_envs, "cfg": cfg or {}, "baseSeed": base_seed})
-        if header.get("obsDim") != OBS_DIM:
-            raise RuntimeError(f"観測次元が食い違っている: JS={header.get('obsDim')} Py={OBS_DIM}")
+        if header.get("obsDim") != self.obs_dim:
+            raise RuntimeError(f"観測次元が食い違っている: JS={header.get('obsDim')} Py={self.obs_dim}")
         self.action_nvec = header["actionNvec"]
         self.last_obs = obs
 
@@ -70,8 +77,8 @@ class Worker:
             n_obs = self.n + len(header["resetIdx"])  # 通常の観測 + 終了時の観測
         else:                                         # init / reset の応答
             n_obs = len(header.get("idx", [])) or self.n
-        blob = self._read_exact(n_obs * OBS_DIM * 4)
-        return header, np.frombuffer(blob, dtype="<f4").reshape(n_obs, OBS_DIM)
+        blob = self._read_exact(n_obs * self.obs_dim * 4)
+        return header, np.frombuffer(blob, dtype="<f4").reshape(n_obs, self.obs_dim)
 
     def _call(self, msg: dict) -> tuple[dict, np.ndarray]:
         self._send(msg)

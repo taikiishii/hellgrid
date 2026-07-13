@@ -23,7 +23,7 @@ import numpy as np
 from gymnasium import spaces
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 
-from protocol import ACTION_NVEC, OBS_DIM, Worker
+from protocol import ACTION_NVEC, OBS_DIM, Worker, obs_dim_for  # noqa: F401
 
 
 class HellgridVecEnv(VecEnv):
@@ -44,7 +44,8 @@ class HellgridVecEnv(VecEnv):
 
         super().__init__(
             num_envs,
-            spaces.Box(low=-1.0, high=1.0, shape=(OBS_DIM,), dtype=np.float32),
+            # 観測次元は cfg で決まる (env2:True でフォグ・オブ・ウォー版 Box(5866))
+            spaces.Box(low=-1.0, high=1.0, shape=(obs_dim_for(cfg),), dtype=np.float32),
             spaces.MultiDiscrete(ACTION_NVEC),
         )
         self.n_workers = n_workers

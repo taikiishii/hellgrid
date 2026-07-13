@@ -20,10 +20,13 @@
  * 終了時の観測は resetIdx の順にブロブの後半へ付ける (SB3 の VecEnv 流儀)。
  * ========================================================================= */
 const readline = require('readline');
-const { createEnvContext } = require('./sim-loader.cjs');
+const { createEnvContext, createEnvContext2 } = require('./sim-loader.cjs');
 
-const ctx = createEnvContext();
-const { HellgridEnv, OBS_DIM, ACTION_NVEC } = ctx;
+// コンテキストは init で作る。cfg.env2 が真なら探索版 (HellgridEnv2 / Box(5866))、
+// 偽なら従来版 (HellgridEnv / Box(1477))。既定は従来版で、挙動は以前と同じ。
+let EnvClass = null;
+let OBS_DIM = 0;
+let ACTION_NVEC = null;
 
 let envs = [];
 let seedCounter = 0;
@@ -51,11 +54,18 @@ function send(header, nObs) {
 
 const commands = {
   init(msg) {
+    const cfg = Object.assign({}, msg.cfg || {});
+    const useV2 = !!cfg.env2;
+    delete cfg.env2;   // Env 側には渡さない (プロトコル層のフラグ)
+    const ctx = useV2 ? createEnvContext2() : createEnvContext();
+    EnvClass = useV2 ? ctx.HellgridEnv2 : ctx.HellgridEnv;
+    OBS_DIM = useV2 ? ctx.OBS2_DIM : ctx.OBS_DIM;
+    ACTION_NVEC = useV2 ? ctx.ACTION_NVEC2 : ctx.ACTION_NVEC;
     envs = [];
     seedCounter = (msg.baseSeed >>> 0) || 1;
     allocOut(msg.n);
     for (let i = 0; i < msg.n; i++) {
-      const env = new HellgridEnv(msg.cfg || {});
+      const env = new EnvClass(cfg);
       envs.push(env);
       outF32.set(env.reset(msg.seeds ? msg.seeds[i] : seedCounter++), i * OBS_DIM);
     }
