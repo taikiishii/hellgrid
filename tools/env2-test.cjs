@@ -41,30 +41,43 @@ console.log('\n[1] 迷路生成 (50シード, size=11):');
     }
     return dist;
   };
-  let allOk = true, minD = Infinity, maxD = -Infinity, sumD = 0;
-  for (let seed = 1; seed <= 50; seed++) {
-    const def = generateMaze(seed, { size: 11 });
-    const map = def.map, w = map[0].length;
-    if (!map.every(r => r.length === w)) { allOk = false; break; }
-    const px = map.join('').indexOf('P');
-    const nX = map.join('').split('X').length - 1;
-    if (px < 0 || nX !== 1) { allOk = false; break; }
-    const sx = px % w, sy = (px / w) | 0;
-    const dist = bfs(map, sx, sy);
-    // 出口スイッチの隣の床に届くか
-    const xi = map.join('').indexOf('X'), ex = xi % w, ey = (xi / w) | 0;
-    let reach = -1;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const ax = ex + dx, ay = ey + dy;
-      if (ax < 0 || ay < 0 || ax >= w || ay >= map.length) continue;
-      const d = dist[ay * w + ax];
-      if (d >= 0 && (reach < 0 || d < reach)) reach = d;
+  const checkConfig = (label, opts) => {
+    let allOk = true, minD = Infinity, maxD = -Infinity, sumD = 0;
+    for (let seed = 1; seed <= 50; seed++) {
+      const def = generateMaze(seed, opts);
+      const map = def.map, w = map[0].length;
+      if (!map.every(r => r.length === w)) { allOk = false; break; }
+      const px = map.join('').indexOf('P');
+      const nX = map.join('').split('X').length - 1;
+      if (px < 0 || nX !== 1) { allOk = false; break; }
+      const sx = px % w, sy = (px / w) | 0;
+      const dist = bfs(map, sx, sy);
+      // 出口スイッチの隣の床に届くか
+      const xi = map.join('').indexOf('X'), ex = xi % w, ey = (xi / w) | 0;
+      let reach = -1;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const ax = ex + dx, ay = ey + dy;
+        if (ax < 0 || ay < 0 || ax >= w || ay >= map.length) continue;
+        const d = dist[ay * w + ax];
+        if (d >= 0 && (reach < 0 || d < reach)) reach = d;
+      }
+      // 全床タイルが P から到達可能か (部屋の彫り込みで孤立が生まれていないか)
+      let isolated = 0;
+      for (let y = 0; y < map.length; y++) {
+        for (let x = 0; x < w; x++) {
+          if (!'#X'.includes(map[y][x]) && dist[y * w + x] < 0) isolated++;
+        }
+      }
+      if (reach < 0 || isolated > 0) { allOk = false; break; }
+      minD = Math.min(minD, reach); maxD = Math.max(maxD, reach); sumD += reach;
     }
-    if (reach < 0) { allOk = false; break; }
-    minD = Math.min(minD, reach); maxD = Math.max(maxD, reach); sumD += reach;
-  }
-  ok(allOk, `50迷路すべて: 行長一致・P/X が1個・開始→出口が到達可能`);
-  console.log(`      出口までの歩数: 最小 ${minD}  平均 ${(sumD / 50).toFixed(1)}  最大 ${maxD}`);
+    ok(allOk, `${label}: 50迷路すべて 行長一致・P/X 1個・出口到達可能・孤立床なし`);
+    console.log(`      出口までの歩数: 最小 ${minD}  平均 ${(sumD / 50).toFixed(1)}  最大 ${maxD}`);
+  };
+  checkConfig('11x11 素の迷路          ', { size: 11 });
+  checkConfig('15x15 braid=0.15        ', { size: 15, braid: 0.15 });
+  checkConfig('21x21 braid+部屋5個     ', { size: 21, braid: 0.15, rooms: 5 });
+  checkConfig('25x25 braid+部屋7個     ', { size: 25, braid: 0.15, rooms: 7 });
   const a = generateMaze(7, { size: 11 }).map.join('\n');
   const b = generateMaze(7, { size: 11 }).map.join('\n');
   const c = generateMaze(8, { size: 11 }).map.join('\n');

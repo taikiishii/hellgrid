@@ -77,18 +77,41 @@
       }
     }
 
+    // ---- rooms: 迷路の上に矩形の部屋を彫る ----
+    // 実ステージ (E1M*) は幅1タイルの通路ではなく部屋+廊下の構造なので、
+    // 転移の前に「開けた空間」に慣れさせる。部屋は 2x2 以上なら必ず奇数座標の
+    // セル (=迷路の床) を含むため、孤立しない。
+    for (let n = 0; n < (opts.rooms || 0); n++) {
+      const rw = 3 + ((rng() * 5) | 0), rh = 3 + ((rng() * 5) | 0);   // 3..7
+      const rx = 1 + ((rng() * (w - rw - 2)) | 0);
+      const ry = 1 + ((rng() * (h - rh - 2)) | 0);
+      for (let y = ry; y < ry + rh; y++) {
+        for (let x = rx; x < rx + rw; x++) grid[y][x] = '.';
+      }
+    }
+
     // ---- P: ランダムな床セル ----
     const px = ((rng() * cw) | 0) * 2 + 1, py = ((rng() * ch) | 0) * 2 + 1;
     grid[py][px] = 'P';
 
     // ---- X: P から最も遠い床タイルの隣の壁 ----
+    // 部屋の中央 (壁が隣接しない床) が最遠になることがあるので、
+    // 「壁が隣接する床のうち最も遠いもの」を選ぶ
     const dist = new Int16Array(w * h).fill(-1);
     dist[py * w + px] = 0;
     const q = [py * w + px];
+    const hasWallNb = c => {
+      const cx = c % w, cy = (c / w) | 0;
+      for (const [dx, dy] of DIRS) {
+        const ax = cx + dx, ay = cy + dy;
+        if (ax >= 0 && ay >= 0 && ax < w && ay < h && grid[ay][ax] === '#') return true;
+      }
+      return false;
+    };
     let far = q[0];
     for (let qi = 0; qi < q.length; qi++) {
       const c = q[qi], cx = c % w, cy = (c / w) | 0;
-      if (dist[c] > dist[far]) far = c;
+      if (dist[c] > dist[far] && hasWallNb(c)) far = c;
       for (const [dx, dy] of DIRS) {
         const ax = cx + dx, ay = cy + dy;
         if (ax < 0 || ay < 0 || ax >= w || ay >= h) continue;

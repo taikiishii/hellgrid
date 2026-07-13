@@ -49,6 +49,7 @@
         levels: null,      // null = 毎エピソードにランダム迷路 / [0,...] = 既存ステージ
         mazeSize: 11,      // 迷路の一辺 (奇数)
         mazeBraid: 0,      // 0..1 行き止まりを開通させてループを作る割合
+        mazeRooms: 0,      // 迷路の上に彫る矩形の部屋の数 (実ステージの構造に近づける)
         maxSteps: 600,     // 行動ステップ上限 (15Hz なので 600 = 40秒)
         frameSkip: 4,
         noEnemies: false,
@@ -68,7 +69,9 @@
         const rng = makeRNG(this.episodeSeed);
         idx = this.cfg.levels[(rng() * this.cfg.levels.length) | 0];
       } else {
-        const def = generateMaze(this.episodeSeed, { size: this.cfg.mazeSize, braid: this.cfg.mazeBraid });
+        const def = generateMaze(this.episodeSeed, {
+          size: this.cfg.mazeSize, braid: this.cfg.mazeBraid, rooms: this.cfg.mazeRooms,
+        });
         // このコンテキストの LEVELS に1スロット確保して毎回差し替える
         // (World.loadLevel は LEVELS[index] を読むだけなので、これで注入できる)
         if (this.mazeIdx < 0) { this.mazeIdx = LEVELS.length; LEVELS.push(def); }

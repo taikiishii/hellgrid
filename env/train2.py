@@ -39,7 +39,12 @@ STAGES = {
     "maze9":  {"env2": True, "mazeSize": 9,  "maxSteps": 400},
     "maze11": {"env2": True, "mazeSize": 11, "maxSteps": 600},
     "maze15": {"env2": True, "mazeSize": 15, "mazeBraid": 0.15, "maxSteps": 900},
-    # 転移: 既存ステージを探索観測でプレイ (敵なしから)
+    # 部屋つき: 実ステージ (E1M* は部屋+廊下、床243〜425タイル) への転移の橋渡し。
+    # サイズと構造 (開けた空間) の両方の軸を一度に飛ばないための中間段階
+    "maze21-rooms": {"env2": True, "mazeSize": 21, "mazeBraid": 0.15, "mazeRooms": 5, "maxSteps": 1200},
+    "maze25-rooms": {"env2": True, "mazeSize": 25, "mazeBraid": 0.15, "mazeRooms": 7, "maxSteps": 1500},
+    # 転移: 既存ステージを探索観測でプレイ (敵なしから)。
+    # 入る前に「前段の重みでの成功率が0%でない」ことを eval2 で必ず確認する (教訓6)
     "e1m1-nav": {"env2": True, "levels": [0], "noEnemies": True, "noItems": True, "maxSteps": 1500},
 }
 
