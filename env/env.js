@@ -26,7 +26,10 @@ const WEAPON_BY_ACTION = [null, 'pistol', 'shotgun', 'knife'];
 const REWARD = {
   damageDealt: 0.01,    // 敵に与えたHP 1あたり
   kill: 1.0,
-  damageTaken: -0.02,   // 受けたHP 1あたり
+  // HP+アーマーの増減。増えても減っても同じ重み = 「HPそのものに価値がある」。
+  // 片側だけ(被ダメージのペナルティだけ)にすると、回復アイテムを拾う理由が
+  // 生まれず、通し(campaign)で必ずジリ貧になる。
+  hp: 0.02,
   death: -10,
   item: 0.3,
   keycard: 3.0,
@@ -39,6 +42,17 @@ const REWARD = {
   progress: 0.1,        // 目標に1タイル近づくごと (ポテンシャル整形)
 };
 
+// 闘技場モード (mode:'arena') の報酬。
+// 通常のステージでは「敵を無視して出口へ走る」のが最適解なので、戦闘は絶対に
+// 学習されない (実測: 射撃率60%・キル率0.2% = 弾を撒き散らしているだけ)。
+// 戦闘を学ばせるには、戦闘しか出口がない状況に追い込むしかない。
+const ARENA = {
+  kill: 3.0,           // 通常の3倍
+  damageDealt: 0.03,   // 通常の3倍。「当てる」ことに勾配を立てる
+  clear: 20.0,         // 敵を全滅させたら終了
+  flee: -5.0,          // 敵を残して出口から逃げたら罰
+};
+
 class HellgridEnv {
   constructor(cfg = {}) {
     this.cfg = Object.assign({
@@ -48,6 +62,14 @@ class HellgridEnv {
       frameSkip: 4,
       noEnemies: false,         // カリキュラム: 敵なしで「出口に着く」だけを学ぶ
       noItems: false,
+      // 逆カリキュラム: 難所を「消耗した状態」から始めさせる。
+      // 通しで E1M4 に着くころにはHPも弾も減っているが、そのE1M4を素の100HPからしか
+      // 練習していないと本番で通用しない。[下限, 上限] を渡すとその範囲でランダム化する。
+      startHp: null,            // 例: [25, 85]
+      startArmor: null,
+      startBullets: null,
+      startShells: null,
+      shotgunChance: 0,         // ショットガンを持っている確率
     }, cfg);
     this.world = new World({ seed: 1, level: this.cfg.levels[0] });
     this.obsBuf = new Float32Array(OBS_DIM);
@@ -64,6 +86,7 @@ class HellgridEnv {
     }
     lv.meta = levelMeta(lv);
     this._refreshGoal();
+    this._refreshSupply(true);
     this._snapshot();
     this.doorsOpen = this._countOpenDoors();
   }
@@ -72,6 +95,18 @@ class HellgridEnv {
     this.goal = computeGoalField(this.world);
     this.goalDist = goalDistAt(this.goal, this.world.level, this.world.player.x, this.world.player.y);
     this.goalTarget = this.goal.target;
+  }
+
+  // 補給物資への距離場。毎ステップ BFS を張り直すと重いので、
+  // 「拾った / 満タンになった / キーを取った」ときだけ作り直す
+  _refreshSupply(force) {
+    const sig = supplySignature(this.world);
+    if (!force && sig === this.supplySig) return;
+    this.supplySig = sig;
+    this.supply = {
+      heal: computeSupplyField(this.world, HEAL_KINDS),
+      ammo: computeSupplyField(this.world, AMMO_KINDS),
+    };
   }
 
   // 報酬計算のために前ステップの値を控えておく
@@ -99,11 +134,27 @@ class HellgridEnv {
     const idx = levels[(rng() * levels.length) | 0];
     this.world.reset(idx, this.episodeSeed);
     this.world.drainEvents();
+    this._applyStartState();   // _onLevelLoaded (= 報酬用のスナップショット) より先に
     this.steps = 0;
     this.epReward = 0;
     this.levelsCleared = 0;
     this._onLevelLoaded();
-    return buildObs(this.world, this.goal, this.obsBuf);
+    return buildObs(this.world, this.goal, this.obsBuf, this.supply);
+  }
+
+  // 逆カリキュラム用。消耗した状態でエピソードを始める。
+  // ただし E1M1 から始まるエピソードは素の状態のまま。序盤を毎回きちんと練習させないと
+  // 破滅的忘却が起きる (前回の late がこれで失敗した: 通し性能が 2.90 -> 2.52 に悪化)
+  _applyStartState() {
+    const cfg = this.cfg, p = this.world.player;
+    if (this.world.level.index === 0) return;
+    const pick = r => r[0] + this.world.rng() * (r[1] - r[0]);
+    if (cfg.startHp) p.health = Math.max(1, Math.round(pick(cfg.startHp)));
+    if (cfg.startArmor) p.armor = Math.round(pick(cfg.startArmor));
+    if (cfg.startBullets) p.bullets = Math.round(pick(cfg.startBullets));
+    if (cfg.startShells) p.shells = Math.round(pick(cfg.startShells));
+    if (cfg.shotgunChance && this.world.rng() < cfg.shotgunChance) p.hasShotgun = true;
+    if (!p.hasShotgun && p.weapon === 'shotgun') p.weapon = 'pistol';
   }
 
   step(action) {
@@ -134,11 +185,15 @@ class HellgridEnv {
     this.steps++;
 
     // ---- 報酬 ----
+    const arena = cfg.mode === 'arena';
     const lv = w.level, prev = this.prev;
     const enemyHp = lv.enemies.reduce((a, e) => a + Math.max(0, e.hp), 0);
-    reward += Math.max(0, prev.enemyHp - enemyHp) * REWARD.damageDealt;
-    reward += (lv.kills - prev.kills) * REWARD.kill;
-    reward += Math.max(0, (prev.hp + prev.armor) - (p.health + p.armor)) * REWARD.damageTaken;
+    reward += Math.max(0, prev.enemyHp - enemyHp) * (arena ? ARENA.damageDealt : REWARD.damageDealt);
+    reward += (lv.kills - prev.kills) * (arena ? ARENA.kill : REWARD.kill);
+    // HPとアーマーの増減を対称に評価する。回復で +、被弾で -。
+    // ステージ切り替え直後は _onLevelLoaded() が prev を撮り直すので、
+    // ステージ間のリセット(single)を回復と誤認することはない。
+    reward += ((p.health + p.armor) - (prev.hp + prev.armor)) * REWARD.hp;
     reward += (lv.itemsGot - prev.itemsGot) * REWARD.item;
     reward += (lv.secretsFound - prev.secrets) * REWARD.secret;
     reward += Math.max(0, (prev.bullets - p.bullets) + (prev.shells - p.shells)) * REWARD.ammoSpent;
@@ -152,30 +207,41 @@ class HellgridEnv {
     this.doorsOpen = openNow;
 
     // ---- 出口までの距離によるポテンシャル整形 ----
-    // キーを取ると目標が切り替わって距離が飛ぶので、そのステップは整形しない
+    // キーを取ると目標が切り替わって距離が飛ぶので、そのステップは整形しない。
+    // 闘技場では出口へ誘導してはいけない (戦えと言っているのだから)
     if (gotKey) {
       this._refreshGoal();
-    } else {
+    } else if (!arena) {
       const d = goalDistAt(this.goal, lv, p.x, p.y);
       if (d >= 0 && this.goalDist >= 0) reward += (this.goalDist - d) * REWARD.progress;
       if (d >= 0) this.goalDist = d;
     }
+    this._refreshSupply();   // 拾った / 満タンになった ときだけ張り直される
 
     // ---- 終了判定 ----
     let terminated = false, truncated = false;
     if (w.state === 'dead') {
       reward += REWARD.death;
       terminated = true;
-    } else if (w.state === 'levelEnd') {
-      reward += REWARD.levelClear;
+    } else if (arena && lv.totalKills > 0 && lv.kills >= lv.totalKills) {
+      reward += ARENA.clear;      // 全滅させた
       this.levelsCleared++;
-      if (cfg.mode === 'campaign') {
-        w.nextLevel();
-        w.drainEvents();
-        if (w.state === 'gameClear') { reward += REWARD.gameClear; terminated = true; }
-        else this._onLevelLoaded();
-      } else {
+      terminated = true;
+    } else if (w.state === 'levelEnd') {
+      if (arena) {
+        reward += ARENA.flee;     // 敵を残して逃げた
         terminated = true;
+      } else {
+        reward += REWARD.levelClear;
+        this.levelsCleared++;
+        if (cfg.mode === 'campaign') {
+          w.nextLevel();
+          w.drainEvents();
+          if (w.state === 'gameClear') { reward += REWARD.gameClear; terminated = true; }
+          else this._onLevelLoaded();
+        } else {
+          terminated = true;
+        }
       }
     } else if (w.state === 'gameClear') {
       reward += REWARD.gameClear;
@@ -186,7 +252,7 @@ class HellgridEnv {
     this._snapshot();
     this.epReward += reward;
 
-    const obs = buildObs(w, this.goal, this.obsBuf);
+    const obs = buildObs(w, this.goal, this.obsBuf, this.supply);
     return {
       obs, reward, terminated, truncated,
       info: {

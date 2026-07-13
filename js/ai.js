@@ -86,6 +86,14 @@ class Policy {
 // 決定的なので、同じシード + 同じ行動列 なら寸分違わず同じプレイが再現される。
 class AIDriver {
   constructor(world, policy, script) {
+    // 重みが古い観測次元で学習されていたら、必ずここで落とす。
+    // Float32Array は範囲外の書き込みを黙って捨てるので、放っておくと観測の後ろ半分が
+    // 欠けたまま「それらしく動く壊れたAI」ができあがる (実際にこれで一度嵌まった)
+    if (policy && policy.obsDim !== OBS_DIM) {
+      throw new Error(
+        `policy: 観測次元が食い違っている (重み=${policy.obsDim}, いまの観測=${OBS_DIM})。` +
+        'tools/export-policy.py で書き出し直すこと');
+    }
     this.world = world;
     this.policy = policy;
     this.script = script || null;
@@ -99,11 +107,25 @@ class AIDriver {
     this.syncLevel();
   }
 
+  // 補給物資 (回復・弾薬) への距離場。env/env.js の _refreshSupply と同じことをする。
+  // ここを学習時と揃えないと、観測の ch7/ch8 が空のまま方策に食わせることになり、
+  // 「動くけれど、まるで別物のAI」ができあがる (実際にこれで一度嵌まった)
+  refreshSupply(force) {
+    const sig = supplySignature(this.world);
+    if (!force && sig === this.supplySig) return;
+    this.supplySig = sig;
+    this.supply = {
+      heal: computeSupplyField(this.world, HEAL_KINDS),
+      ammo: computeSupplyField(this.world, AMMO_KINDS),
+    };
+  }
+
   // ステージが変わったら、出口までの距離場を張り直し、録画も撮り直す
   syncLevel() {
     const lv = this.world.level;
     lv.meta = levelMeta(lv);
     this.goal = computeGoalField(this.world);
+    this.refreshSupply(true);
     this.hadRed = this.world.player.keys.red;
     this.hadBlue = this.world.player.keys.blue;
     this.levelIndex = lv.index;
@@ -128,6 +150,8 @@ class AIDriver {
       this.goal = computeGoalField(w);
     }
 
+    this.refreshSupply();   // 拾った / 満タンになった ときだけ張り直される
+
     if (this.tick % AI_FRAME_SKIP === 0) this.decide();
     w.look(this.turn / AI_FRAME_SKIP, this.pitch / AI_FRAME_SKIP);
     this.tick++;
@@ -135,7 +159,7 @@ class AIDriver {
 
   decide() {
     const w = this.world;
-    buildObs(w, this.goal, this.obs);   // リプレイ中も可視化のために観測は作る
+    buildObs(w, this.goal, this.obs, this.supply);   // リプレイ中も可視化のために観測は作る
     const a = this.script
       ? (this.script[this.frame] || [0, 0, 0, 0, 0, 0, 0])
       : this.policy.act(this.obs);

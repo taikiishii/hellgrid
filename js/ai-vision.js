@@ -127,6 +127,49 @@ function renderGrid(o) {
     VIS_GX + 6, VIS_GY + VIS_GRID_PX + 14);
 }
 
+// ---- 補給物資への勾配 (grid ch7=回復 / ch8=弾薬) ----
+// 出口への勾配 (ch6) しか持たせていなかったせいで、エージェントは視界外の回復を
+// 探せず、通しで必ずジリ貧になった。その反省で足したチャネル。
+const VIS_S_CELL = 7;
+const VIS_S_PX = GRID * VIS_S_CELL;                       // 77
+const VIS_SY = VIS_GY + VIS_GRID_PX + 32;                 // グリッドパネルの下
+function renderSupply(o) {
+  const w = VIS_S_PX * 2 + 22;
+  visPanel(VIS_GX, VIS_SY - 14, VIS_PANEL, VIS_S_PX + 30, null);
+  const labels = ['回復への勾配', '弾薬への勾配'];
+  for (let k = 0; k < 2; k++) {
+    const plane = 7 + k;
+    const ox = VIS_GX + 6 + k * (VIS_S_PX + 10);
+    ctx.font = 'bold 8px monospace';
+    ctx.fillStyle = 'rgba(64,224,128,0.85)';
+    ctx.fillText(labels[k], ox, VIS_SY - 3);
+    // 全面 -1 = 「探す先がない」(満タン、または到達できない)
+    let exists = false;
+    for (let gy = 0; gy < GRID && !exists; gy++) {
+      for (let gx = 0; gx < GRID; gx++) {
+        if (gridCh(o, plane, gx, gy) > -0.999) { exists = true; break; }
+      }
+    }
+    for (let gy = 0; gy < GRID; gy++) {
+      for (let gx = 0; gx < GRID; gx++) {
+        const g = gridCh(o, plane, gx, gy);
+        ctx.fillStyle = exists ? gradColor(g) : 'rgba(50,50,58,0.6)';
+        ctx.fillRect(ox + gx * VIS_S_CELL, VIS_SY + gy * VIS_S_CELL, VIS_S_CELL - 1, VIS_S_CELL - 1);
+      }
+    }
+    if (!exists) {   // 満タン = 探す必要がない
+      ctx.font = 'bold 8px monospace';
+      ctx.fillStyle = 'rgba(200,200,205,0.7)';
+      ctx.fillText('満タン', ox + 20, VIS_SY + VIS_S_PX / 2);
+    }
+  }
+  const hd = scalar(o, 24) * 40, ad = scalar(o, 26) * 40;
+  ctx.font = 'bold 9px monospace';
+  ctx.fillStyle = 'rgba(220,220,225,0.75)';
+  ctx.fillText(`回復 ${scalar(o, 25) > 0.5 ? (hd | 0) + '歩' : '—'}   弾薬 ${scalar(o, 27) > 0.5 ? (ad | 0) + '歩' : '—'}`,
+    VIS_GX + 6, VIS_SY + VIS_S_PX + 11);
+}
+
 // ---- いまAIが押している入力 ----
 const VIS_ACT_X = 8, VIS_ACT_H = 34;
 function renderAction(a) {
@@ -161,6 +204,7 @@ function renderAIVision(driver) {
   ctx.textBaseline = 'alphabetic';
   renderRayBar(driver.obs);
   renderGrid(driver.obs);
+  if (GRID_CH >= 9) renderSupply(driver.obs);   // 補給物資への勾配 (新しい観測にだけある)
   renderAction(driver.action);
   ctx.restore();
 }

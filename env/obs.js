@@ -15,8 +15,8 @@
 
 const N_RAYS = 24;
 const RAY_CH = 15;
-const GRID = 11, GRID_CH = 7;
-const N_SCALARS = 24;
+const GRID = 11, GRID_CH = 9;    // ch7/ch8 = 回復・弾薬への勾配 (後述)
+const N_SCALARS = 28;
 
 const RAYS_DIM = N_RAYS * RAY_CH;          // 360
 const GRID_DIM = GRID * GRID * GRID_CH;    // 847
@@ -109,6 +109,43 @@ function goalDistAt(goal, level, x, y) {
   return goal.field[iy * level.w + ix];
 }
 
+// ======================= 補給物資までの距離場 =======================
+// 出口までのBFSしか持たせていなかったせいで、エージェントは「視界の外にある回復
+// アイテムを探しに行く」ことが原理的にできなかった (レイと11x11グリッドに入って
+// 初めて見える)。通しで必ずジリ貧になっていた根本原因。出口と同じ仕組みで
+// 「いま自分に必要な補給物資」への勾配を作る。
+const HEAL_KINDS = 'hHpV';   // 回復・アーマー
+const AMMO_KINDS = 'aAsS';   // 弾・シェル・ショットガン
+
+// いま「拾う価値がある」物資だけを種にする。満タンなら種はゼロ = 場は存在しない
+function computeSupplyField(world, kinds) {
+  const level = world.level, p = world.player;
+  const seeds = [];
+  for (const it of level.items) {
+    if (!kinds.includes(it.kind)) continue;
+    if (!ITEM_TYPES[it.kind].need(p)) continue;
+    seeds.push([it.x | 0, it.y | 0]);
+  }
+  if (!seeds.length) return { field: null, exists: false };
+  return { field: bfsField(level, seeds, p.keys), exists: true };
+}
+
+function supplyDistAt(sup, level, x, y) {
+  if (!sup.field) return -1;
+  const ix = x | 0, iy = y | 0;
+  if (ix < 0 || iy < 0 || ix >= level.w || iy >= level.h) return -1;
+  return sup.field[iy * level.w + ix];
+}
+
+// 場を作り直すべきか判断するための署名。アイテムを拾った / 満タンになった /
+// キーカードを取った (通れる場所が変わる) ときだけ作り直せばよい
+function supplySignature(world) {
+  const p = world.player, lv = world.level;
+  return `${lv.items.length}|${p.health < 100 ? 1 : 0}|${p.armor < ARMOR_MAX ? 1 : 0}` +
+    `|${p.bullets < 200 ? 1 : 0}|${p.shells < 50 ? 1 : 0}|${p.hasShotgun ? 1 : 0}` +
+    `|${p.keys.red ? 1 : 0}${p.keys.blue ? 1 : 0}`;
+}
+
 // ======================= レイ =======================
 
 // 壁(閉じたドア含む)か、視線を遮る段差に当たるまで進む
@@ -135,10 +172,13 @@ function rayWall(world, x, y, dx, dy) {
 
 // ======================= 観測ベクトル =======================
 
-function buildObs(world, goal, out) {
+// supply: { heal, ammo } — computeSupplyField() の結果。env.js がキャッシュして渡す
+function buildObs(world, goal, out, supply) {
   const o = out || new Float32Array(OBS_DIM);
   o.fill(0);
   const p = world.player, level = world.level;
+  const heal = (supply && supply.heal) || { field: null, exists: false };
+  const ammo = (supply && supply.ammo) || { field: null, exists: false };
 
   // ---- rays ----
   for (let i = 0; i < N_RAYS; i++) {
@@ -226,6 +266,8 @@ function buildObs(world, goal, out) {
   const half = (GRID - 1) / 2;
   const rgtX = -p.dirY, rgtY = p.dirX;     // 右手方向 (KeyD の向き)
   const pd = goalDistAt(goal, level, p.x, p.y);
+  const phd = supplyDistAt(heal, level, p.x, p.y);   // 回復までの歩数 (自分の位置)
+  const pad = supplyDistAt(ammo, level, p.x, p.y);   // 弾薬まで
   const plane = GRID * GRID;
   for (let gy = 0; gy < GRID; gy++) {
     for (let gx = 0; gx < GRID; gx++) {
@@ -252,6 +294,12 @@ function buildObs(world, goal, out) {
       // 出口(または目標のキー)までの距離の勾配。正 = 目標に近づく向き
       const td = goalDistAt(goal, level, wx, wy);
       o[c + 6 * plane] = (td < 0 || pd < 0) ? -1 : clamp((pd - td) / 8, -1, 1);
+      // 同じ要領で「いま必要な回復」「いま必要な弾薬」への勾配。
+      // 満タンなら場そのものが存在しないので、全面 -1 (= 探す先がない) になる
+      const hd = supplyDistAt(heal, level, wx, wy);
+      o[c + 7 * plane] = (hd < 0 || phd < 0) ? -1 : clamp((phd - hd) / 8, -1, 1);
+      const ad = supplyDistAt(ammo, level, wx, wy);
+      o[c + 8 * plane] = (ad < 0 || pad < 0) ? -1 : clamp((pad - ad) / 8, -1, 1);
     }
   }
 
@@ -298,6 +346,12 @@ function buildObs(world, goal, out) {
     o[s + 23] = (nx * p.dirX + ny * p.dirY) / nd; // cos: 前が正
   }
 
+  // 補給物資までの残り歩数。「HPが減った → 回復はどこだ」を判断できるようにする
+  o[s + 24] = phd < 0 ? 1 : Math.min(1, phd / 40);
+  o[s + 25] = phd < 0 ? 0 : 1;   // 到達できる回復があるか
+  o[s + 26] = pad < 0 ? 1 : Math.min(1, pad / 40);
+  o[s + 27] = pad < 0 ? 0 : 1;   // 到達できる弾薬があるか
+
   return o;
 }
 
@@ -321,4 +375,5 @@ Object.assign(globalThis, {
   N_RAYS, RAY_CH, GRID, GRID_CH, N_SCALARS,
   RAYS_DIM, GRID_DIM, OBS_DIM, RAYS_OFF, GRID_OFF, SCALARS_OFF,
   buildObs, computeGoalField, goalDistAt, levelMeta,
+  computeSupplyField, supplyDistAt, supplySignature, HEAL_KINDS, AMMO_KINDS,
 });

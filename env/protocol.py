@@ -18,12 +18,13 @@ import numpy as np
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SERVER = ROOT / "env" / "server.js"
 
-OBS_DIM = 1231
+OBS_DIM = 1477
 ACTION_NVEC = [3, 3, 5, 3, 2, 2, 4]
 
 # 観測の内訳 (grid を CNN に流したくなったときに切り出せるよう公開しておく)
+# grid の ch6/ch7/ch8 = 出口 / 回復 / 弾薬 へのBFS勾配
 N_RAYS, RAY_CH = 24, 15
-GRID, GRID_CH = 11, 7
+GRID, GRID_CH = 11, 9
 RAYS_SLICE = slice(0, N_RAYS * RAY_CH)
 GRID_SLICE = slice(N_RAYS * RAY_CH, N_RAYS * RAY_CH + GRID * GRID * GRID_CH)
 SCALARS_SLICE = slice(N_RAYS * RAY_CH + GRID * GRID * GRID_CH, OBS_DIM)
