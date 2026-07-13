@@ -79,6 +79,15 @@ STAGES = {
         "mazeMix": 0.2, "mazeSize": 21, "mazeBraid": 0.15, "mazeRooms": 5,
         "maxSteps": 2000,
     },
+    # E1M4 だけ 24% で伸びが鈍い (mix3 実測: 平均キル0.8 = 戦わず縫って走る)。
+    # E1M4 を3倍サンプリングして練習量を寄せる。他ステージと迷路は混ぜ続ける
+    # (難所だけの集中訓練は破滅的忘却で失敗する — v1 教訓4)
+    "e1m-mix4": {
+        "env2": True, "levels": [0, 1, 2, 3, 3, 3, 4], "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.5, 1.0],
+        "mazeMix": 0.15, "mazeSize": 21, "mazeBraid": 0.15, "mazeRooms": 5,
+        "maxSteps": 2000,
+    },
 }
 
 
