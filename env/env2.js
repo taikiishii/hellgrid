@@ -52,6 +52,8 @@
     constructor(cfg = {}) {
       this.cfg = Object.assign({
         levels: null,      // null = 毎エピソードにランダム迷路 / [0,...] = 既存ステージ
+        mazeMix: 0,        // levels 指定時、この確率でランダム迷路を混ぜる
+                           // (固定マップの丸暗記と、手続き生成で得た探索の忘却の両方を防ぐ)
         mazeSize: 11,      // 迷路の一辺 (奇数)
         mazeBraid: 0,      // 0..1 行き止まりを開通させてループを作る割合
         mazeRooms: 0,      // 迷路の上に彫る矩形の部屋の数 (実ステージの構造に近づける)
@@ -70,9 +72,9 @@
     reset(seed) {
       this.episodeSeed = (seed >>> 0) || 1;
       let idx;
-      if (this.cfg.levels) {
-        const rng = makeRNG(this.episodeSeed);
-        idx = this.cfg.levels[(rng() * this.cfg.levels.length) | 0];
+      const rng0 = makeRNG(this.episodeSeed);
+      if (this.cfg.levels && rng0() >= this.cfg.mazeMix) {
+        idx = this.cfg.levels[(rng0() * this.cfg.levels.length) | 0];
       } else {
         const def = generateMaze(this.episodeSeed, {
           size: this.cfg.mazeSize, braid: this.cfg.mazeBraid, rooms: this.cfg.mazeRooms,

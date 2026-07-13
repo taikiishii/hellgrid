@@ -46,6 +46,14 @@ STAGES = {
     # 転移: 既存ステージを探索観測でプレイ (敵なしから)。
     # 入る前に「前段の重みでの成功率が0%でない」ことを eval2 で必ず確認する (教訓6)
     "e1m1-nav": {"env2": True, "levels": [0], "noEnemies": True, "noItems": True, "maxSteps": 1500},
+    # 本命の転移段階: E1M1〜M5 (敵なし・キーカードあり) とランダム部屋つき迷路を
+    # 50:50 で混ぜる。固定5マップだけで学習すると探索が丸暗記に化け、
+    # 迷路を完全に外すと手続き生成で得た探索を忘れる (教訓4)
+    "e1m-nav-mix": {
+        "env2": True, "levels": [0, 1, 2, 3, 4], "noEnemies": True, "noItems": True,
+        "mazeMix": 0.5, "mazeSize": 21, "mazeBraid": 0.15, "mazeRooms": 5,
+        "maxSteps": 2000,
+    },
 }
 
 
