@@ -51,10 +51,16 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=10_000, help="学習と重ならないシード帯で評価する")
     ap.add_argument("--ablate", choices=list(ABLATIONS), default=None,
                     help="観測の一部をゼロ埋めして依存度を測る")
+    ap.add_argument("--levels", type=int, nargs="+", default=None,
+                    help="ステージ設定の levels を上書きしてステージ別に測る (迷路は混ぜない)")
     args = ap.parse_args()
 
+    cfg = dict(STAGES[args.stage])
+    if args.levels is not None:
+        cfg["levels"] = args.levels
+        cfg["mazeMix"] = 0
     venv = HellgridVecEnv(
-        num_envs=args.envs, n_workers=args.workers, cfg=STAGES[args.stage], base_seed=args.seed
+        num_envs=args.envs, n_workers=args.workers, cfg=cfg, base_seed=args.seed
     )
     model = PPO.load(args.model, device="cpu")
 
