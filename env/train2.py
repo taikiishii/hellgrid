@@ -54,6 +54,14 @@ STAGES = {
         "mazeMix": 0.5, "mazeSize": 21, "mazeBraid": 0.15, "mazeRooms": 5,
         "maxSteps": 2000,
     },
+    # 敵とアイテムを戻す (設計書 §4 の 3)。迷路は 0.3 に減らして探索の保険に残す。
+    # 移行前チェック (e1m-nav-mix の重みでゼロショット): 全体 51% (E1M1 100% /
+    # E1M4 0% — 戦闘を学べば引き上がる。ステージ全体では教訓6のゲートを通過)
+    "e1m-mix": {
+        "env2": True, "levels": [0, 1, 2, 3, 4], "noEnemies": False, "noItems": False,
+        "mazeMix": 0.3, "mazeSize": 21, "mazeBraid": 0.15, "mazeRooms": 5,
+        "maxSteps": 2000,
+    },
 }
 
 
