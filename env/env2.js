@@ -61,6 +61,11 @@
         frameSkip: 4,
         noEnemies: false,
         noItems: false,
+        // [lo, hi] を渡すと、エピソードごとに敵をランダムな割合だけ残す。
+        // 敵密度の高いステージ (E1M4: 16体) は戦闘スキルが育つ前は0%のまま
+        // 動かない (実測: 30M步で出口発見0%)。密度をばらつかせると「解ける
+        // エピソード」が常に混ざり、成功信号が途切れない (v1 教訓6の運用)
+        enemyFraction: null,   // 例: [0.25, 1.0]
       }, cfg);
       this.world = null;
       this.mazeIdx = -1;   // LEVELS 配列に生成迷路を差し込むスロット
@@ -91,6 +96,12 @@
 
       const lv = this.world.level;
       if (this.cfg.noEnemies) { lv.enemies.length = 0; lv.totalKills = 0; }
+      else if (this.cfg.enemyFraction) {
+        const [lo, hi] = this.cfg.enemyFraction;
+        const f = lo + rng0() * (hi - lo);
+        lv.enemies = lv.enemies.filter(() => rng0() < f);
+        lv.totalKills = lv.enemies.length;
+      }
       if (this.cfg.noItems) {
         lv.items = lv.items.filter(it => 'rb'.includes(it.kind));
         lv.totalItems = lv.items.length;

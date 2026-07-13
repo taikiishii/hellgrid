@@ -62,6 +62,15 @@ STAGES = {
         "mazeMix": 0.3, "mazeSize": 21, "mazeBraid": 0.15, "mazeRooms": 5,
         "maxSteps": 2000,
     },
+    # e1m-mix の実測: E1M4 (敵16体) だけ 0/100 のまま動かない (30M步)。
+    # 死因は戦闘力不足 (平均キル0.9・20秒で全滅)。エピソードごとに敵密度を
+    # 25〜100% でばらつかせ、「解けるエピソード」を常に混ぜて成功信号を流す
+    "e1m-mix2": {
+        "env2": True, "levels": [0, 1, 2, 3, 4], "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.25, 1.0],
+        "mazeMix": 0.2, "mazeSize": 21, "mazeBraid": 0.15, "mazeRooms": 5,
+        "maxSteps": 2000,
+    },
 }
 
 
