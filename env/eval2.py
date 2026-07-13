@@ -96,6 +96,12 @@ def main() -> None:
         print(f"  クリア時の平均所要 {np.mean([r['steps'] for r in cleared]):>5.0f} 步 "
               f"({np.mean([r['timeSec'] for r in cleared]):.1f}秒)")
         print(f"  クリア時の平均カバレッジ {np.mean([r['coverage'] for r in cleared]):>6.1%}")
+    failed = [r for r in results if r["levelsCleared"] == 0]
+    if failed:
+        # 失敗 = 時間切れ。カバレッジが高いのに失敗 → 「見たのに出口に行けない」
+        # カバレッジが低い → 「同じ場所をループして探索が止まっている」
+        print(f"  失敗時の平均カバレッジ   {np.mean([r['coverage'] for r in failed]):>6.1%}"
+              f"  (出口発見済みで失敗 {sum(1 for r in failed if r.get('exitSeen'))}/{len(failed)})")
 
 
 if __name__ == "__main__":
