@@ -7,10 +7,10 @@
  * v2 では環境側に「エージェント自身の記憶」(ExploreMemory) を持たせ、
  * 実際に視界に入れた情報しか観測に出さない。
  *
- *   rays    24本 x 15ch = 360   … v1 と同一 (元から視線判定つきで正当)
+ *   rays    24本 x 17ch = 408   … 視線判定つき (v3 で飛翔弾の距離・接近速度を追加)
  *   local   15x15 x 9ch = 2025  … 自己中心の既知マップ。未探索チャネルが探索の主役
  *   global  24x24 x 6ch = 3456  … レベル全体を粗く。絶対座標 + 自機マーカー
- *   scalars 25                  … HUD 相当 + 探索の進み具合
+ *   scalars 28                  … HUD 相当 + 探索の進み具合 + 被弾の量と方向 (v3)
  *
  * カンニングの線引き:
  *   - 「見たタイル」への BFS (computeKnownGoal) は人間の「来た道は覚えている」に
@@ -24,15 +24,20 @@
  * ========================================================================= */
 (() => {
 
-  const N_RAYS = 24, RAY_CH = 15;          // v1 と同じレイアウト
+  // v3: レイに飛翔弾2ch (ch15 距離 / ch16 接近速度)、スカラーに被弾3個を追加。
+  // 「火球を見て避ける」「視野外から撃たれたら音源の方を向く」は人間が画面から
+  // 得ている情報で、これが無いと原理的に学習できない (教訓5)。
+  const N_RAYS = 24, RAY_CH = 17;          // v2 は 15ch だった
   const LOCAL = 15, LOCAL_CH = 9;          // 自己中心の既知マップ
   const GLOB = 24, GLOB_CH = 6;            // 全体マップ (粗い・絶対座標)
-  const N_SCALARS = 25;
+  const N_SCALARS = 28;                    // v2 は 25 だった
+  const PROJ_MAX_SPEED = 9;                // 最速の弾 (獄騎士) で接近速度を正規化
+  const HIT_MEMORY_S = 2;                  // 被弾情報が薄れきるまでの秒数
 
-  const RAYS_DIM = N_RAYS * RAY_CH;                              // 360
+  const RAYS_DIM = N_RAYS * RAY_CH;                              // 408
   const LOCAL_DIM = LOCAL * LOCAL * LOCAL_CH;                    // 2025
   const GLOB_DIM = GLOB * GLOB * GLOB_CH;                        // 3456
-  const OBS2_DIM = RAYS_DIM + LOCAL_DIM + GLOB_DIM + N_SCALARS;  // 5866
+  const OBS2_DIM = RAYS_DIM + LOCAL_DIM + GLOB_DIM + N_SCALARS;  // 5917
 
   const RAYS_OFF = 0;
   const LOCAL_OFF = RAYS_DIM;
@@ -372,6 +377,7 @@
       o[b + 4] = 1;
       o[b + 11] = 1;
       o[b + 14] = 1;
+      o[b + 15] = 1;   // 飛翔弾までの距離 (1 = ない)
     }
 
     const invDet = 1 / (p.planeX * p.dirY - p.dirX * p.planeY);
@@ -423,6 +429,22 @@
       const b = RAYS_OFF + i * RAY_CH;
       const nd = d / MAX_D;
       if (nd < o[b + 14]) o[b + 14] = nd;
+    }
+
+    // 飛翔中の弾 (火球など)。画面に見えるものなので観測に出すのは正当。
+    // ch15 = 最も近い弾までの距離、ch16 = その弾の接近速度 (正 = 向かってくる)
+    for (const pr of level.projectiles) {
+      const i = rayOf(pr.x, pr.y);
+      if (i < 0) continue;
+      const d = mHypot(pr.x - p.x, pr.y - p.y);
+      if (d > MAX_D) continue;
+      const b = RAYS_OFF + i * RAY_CH;
+      const nd = d / MAX_D;
+      if (nd >= o[b + 15]) continue;
+      if (!world.hasLineOfSight(p.x, p.y, pr.x, pr.y, p.z + EYE, pr.z)) continue;
+      o[b + 15] = nd;
+      const closing = d > 0.01 ? -((pr.x - p.x) * pr.dx + (pr.y - p.y) * pr.dy) / d / PROJ_MAX_SPEED : 1;
+      o[b + 16] = closing < -1 ? -1 : closing > 1 ? 1 : closing;
     }
 
     // ---- local: 自己中心の既知マップ (進行方向が上) ----
@@ -539,6 +561,21 @@
       o[s + 22] = nd / 16;
       o[s + 23] = (nx * rgtX + ny * rgtY) / nd;
       o[s + 24] = (nx * p.dirX + ny * p.dirY) / nd;
+    }
+
+    // 最後に受けた攻撃 (v3)。人間の「痛みと被弾方向の感覚」に相当し、
+    // 「視野外から撃たれた → 攻撃源の方を向く」を学習可能にする。
+    // 数秒で減衰し、方向 (自機基準 sin/cos) も同じ重みで薄れる
+    const lh = p.lastHit;
+    if (lh) {
+      const decay = mMax(0, 1 - (world.time - lh.t) / HIT_MEMORY_S);
+      if (decay > 0) {
+        const hx = lh.x - p.x, hy = lh.y - p.y;
+        const hd = mHypot(hx, hy) || 1;
+        o[s + 25] = decay * mMin(1, lh.dmg / 25);
+        o[s + 26] = decay * ((hx * rgtX + hy * rgtY) / hd);
+        o[s + 27] = decay * ((hx * p.dirX + hy * p.dirY) / hd);
+      }
     }
 
     return o;

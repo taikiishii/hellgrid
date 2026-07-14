@@ -19,13 +19,18 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SERVER = ROOT / "env" / "server.js"
 
 OBS_DIM = 1477    # 従来版 (env/obs.js)
-OBS2_DIM = 5866   # 探索版 (env/obs2.js)。cfg に env2:True を入れると server.js が切り替える
-ACTION_NVEC = [3, 3, 5, 3, 2, 2, 4]
+OBS2_DIM = 5917   # 探索版 v3 (env/obs2.js)。cfg に env2:True を入れると server.js が切り替える
+ACTION_NVEC = [3, 3, 5, 3, 2, 2, 4]     # 従来版
+ACTION_NVEC2 = [3, 3, 7, 3, 2, 2, 4]    # 探索版 v3 (旋回に±極小を追加して7段階)
 
 
 def obs_dim_for(cfg: dict | None) -> int:
     """cfg から観測次元を決める。env2 フラグでフォグ・オブ・ウォー版になる。"""
     return OBS2_DIM if (cfg or {}).get("env2") else OBS_DIM
+
+
+def action_nvec_for(cfg: dict | None) -> list[int]:
+    return ACTION_NVEC2 if (cfg or {}).get("env2") else ACTION_NVEC
 
 # 観測の内訳 (grid を CNN に流したくなったときに切り出せるよう公開しておく)
 # grid の ch6/ch7/ch8 = 出口 / 回復 / 弾薬 へのBFS勾配

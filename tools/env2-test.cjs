@@ -421,5 +421,36 @@ console.log('\n[10] 通し (campaign モード):');
   ok(last.reward > 60, `完走ボーナスが出る (+20+50 <= ${last.reward.toFixed(1)})`);
 }
 
+// ---- 11. v3: 飛翔弾のレイと被弾方向のスカラー ----
+console.log('\n[11] 観測v3 (飛翔弾・被弾方向):');
+{
+  const { buildObs2, OBS2_DIM } = ctx;
+  const RAY_CH = 17, S_OFF = OBS2_DIM - 28;
+  const env = new HellgridEnv2({ levels: [0], noEnemies: true, noItems: true, maxSteps: 100 });
+  env.reset(5);
+  const w = env.world, p = w.player;
+  // 正面3タイルから、こちらへ向かってくる火球を注入
+  w.level.projectiles.push({
+    x: p.x + p.dirX * 3, y: p.y + p.dirY * 3, z: p.z + 0.5,
+    dx: -p.dirX * 6, dy: -p.dirY * 6, vz: 0, dmg: [9, 17], t: 0,
+  });
+  let o = buildObs2(w, env.mem, env.goal, env.obsBuf);
+  let best = 1, bi = -1;
+  for (let i = 0; i < 24; i++) {
+    if (o[i * RAY_CH + 15] < best) { best = o[i * RAY_CH + 15]; bi = i; }
+  }
+  ok(best < 0.2, `正面の火球がレイに写る (距離 ${(best * 24).toFixed(1)}タイル)`);
+  ok(bi >= 0 && o[bi * RAY_CH + 16] > 0.5, `接近速度が正 (${bi >= 0 ? o[bi * RAY_CH + 16].toFixed(2) : '-'})`);
+  // 真後ろから撃たれた直後の被弾スカラー
+  p.lastHit = { t: w.time, dmg: 20, x: p.x - p.dirX * 3, y: p.y - p.dirY * 3 };
+  o = buildObs2(w, env.mem, env.goal, env.obsBuf);
+  ok(o[S_OFF + 25] > 0.5, `被弾量スカラー (${o[S_OFF + 25].toFixed(2)})`);
+  ok(o[S_OFF + 27] < -0.9, `被弾方向 cos が負 = 背後 (${o[S_OFF + 27].toFixed(2)})`);
+  // 2秒経つと薄れて消える
+  w.time += 2.5;
+  o = buildObs2(w, env.mem, env.goal, env.obsBuf);
+  ok(o[S_OFF + 25] === 0 && o[S_OFF + 27] === 0, '被弾情報は2秒で減衰して消える');
+}
+
 console.log(failures ? `\nNG ${failures}件の失敗` : '\nすべてOK');
 process.exitCode = failures ? 1 : 0;

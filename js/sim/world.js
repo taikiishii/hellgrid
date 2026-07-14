@@ -77,6 +77,7 @@ class World {
       bobPhase: 0, bobAmount: 0,
       damageFlash: 0, pickupFlash: 0,
       muzzleT: 0,
+      lastHit: null,   // 最後に受けた攻撃 { t, dmg, x, y } (学習環境の観測用)
     };
 
     this.reset(opts.level || 0);
@@ -126,6 +127,7 @@ class World {
     const p = this.player;
     p.health = 100;
     p.armor = 0;
+    p.lastHit = null;
     p.bullets = 50;
     p.shells = 0;
     p.hasShotgun = false;
@@ -579,7 +581,7 @@ class World {
       if (d < R && Math.abs(e.z - z) < 1.6) this.damageEnemy(e, EXPLOSION_DMG * (1 - d / R));
     }
     const dp = Math.hypot(player.x - x, player.y - y);
-    if (dp < R && Math.abs(player.z + EYE - z) < 1.6) this.damagePlayer(EXPLOSION_DMG * 0.7 * (1 - dp / R));
+    if (dp < R && Math.abs(player.z + EYE - z) < 1.6) this.damagePlayer(EXPLOSION_DMG * 0.7 * (1 - dp / R), x, y);
     for (const o of level.barrels) {
       if (o === source || o.dead) continue;
       if (Math.hypot(o.x - x, o.y - y) < R) this.damageBarrel(o, EXPLOSION_DMG); // 連鎖爆発
@@ -659,9 +661,12 @@ class World {
     }
   }
 
-  damagePlayer(dmg) {
+  // srcX/srcY は攻撃源の位置 (任意)。学習環境が「どちらから撃たれたか」を観測に
+  // 出すために記録するだけで、ゲームの挙動には影響しない
+  damagePlayer(dmg, srcX, srcY) {
     const player = this.player;
     if (this.state !== 'playing') return;
+    if (srcX !== undefined) player.lastHit = { t: this.time, dmg, x: srcX, y: srcY };
     // アーマーがダメージの一部(ARMOR_ABSORB)を肩代わりする
     if (player.armor > 0) {
       const absorbed = Math.min(player.armor, dmg * ARMOR_ABSORB);
@@ -784,14 +789,14 @@ class World {
               for (let s = 0; s < shots; s++) {
                 const hitChance = clamp(atk.hitBase - dist * 0.03, 0.1, atk.hitBase);
                 if (this.rng() < hitChance && this.hasLineOfSight(e.x, e.y, player.x, player.y, e.z + EYE, player.z + EYE)) {
-                  this.damagePlayer(atk.dmg[0] + this.rng() * (atk.dmg[1] - atk.dmg[0]));
+                  this.damagePlayer(atk.dmg[0] + this.rng() * (atk.dmg[1] - atk.dmg[0]), e.x, e.y);
                 }
               }
             } else if (atk.kind === 'melee') {
               // 噛みつき: 打撃の瞬間にまだ近く(高さも)にいれば命中
               this.emit('sound', 'bite');
               if (dist < 1.8 && Math.abs(e.z - player.z) < 0.8) {
-                this.damagePlayer(atk.dmg[0] + this.rng() * (atk.dmg[1] - atk.dmg[0]));
+                this.damagePlayer(atk.dmg[0] + this.rng() * (atk.dmg[1] - atk.dmg[0]), e.x, e.y);
               }
             } else {
               // 弾を投げる (高低差があれば上下にも飛ぶ)
@@ -841,7 +846,7 @@ class World {
           if (b) this.damageBarrel(b, p.dmg[1]);
           dead = true;
         } else if (dist2(p.x, p.y, player.x, player.y) < 0.3 && Math.abs(p.z - (player.z + 0.5)) < 0.8) {
-          this.damagePlayer(p.dmg[0] + this.rng() * (p.dmg[1] - p.dmg[0]));
+          this.damagePlayer(p.dmg[0] + this.rng() * (p.dmg[1] - p.dmg[0]), p.x, p.y);
           this.spawnPuff(p.x, p.y, 'boom', p.z);
           dead = true;
         }
