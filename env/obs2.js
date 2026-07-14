@@ -76,6 +76,8 @@
       this.visStamp = new Int32Array(n).fill(-1);  // 最後に視界に入れたステップ
       this.enemyT = new Float32Array(n).fill(-1);  // 敵を最後に見た時刻 (level.time)
       this.itemSeen = new Uint8Array(n);    // 1 = そこにアイテムがあると思っている
+      this.itemKind = new Uint8Array(n);    // 見たアイテムの種別 (文字コード)。回復誘導用
+      this.itemRev = 0;                     // アイテム記憶の世代番号 (場の張り直し判定用)
       this.exits = [];                      // 見つけた出口スイッチのタイル [x,y]
       this.keyTiles = [];                   // 見つけた(まだある)キーカード {x,y,kind}
       this.seenRed = false; this.seenBlue = false;  // 一度でも見たか (拾っても真のまま)
@@ -172,6 +174,8 @@
         if (!world.hasLineOfSight(p.x, p.y, it.x, it.y, p.z + EYE, it.z + 0.3)) continue;
         if (!this.itemSeen[ti]) {
           this.itemSeen[ti] = 1;
+          this.itemKind[ti] = it.kind.charCodeAt(0);
+          this.itemRev++;
           if (it.kind === 'r' || it.kind === 'b') {
             this.keyTiles.push({ x: tx, y: ty, kind: it.kind });
             if (it.kind === 'r') this.seenRed = true; else this.seenBlue = true;
@@ -185,6 +189,8 @@
         if (this.enemyT[i] >= 0 && !liveEnemy.has(i)) this.enemyT[i] = -1;
         if (this.itemSeen[i] && !liveItem.has(i)) {
           this.itemSeen[i] = 0;
+          this.itemKind[i] = 0;
+          this.itemRev++;
           for (let k = this.keyTiles.length - 1; k >= 0; k--) {
             const kt = this.keyTiles[k];
             if (kt.y * this.w + kt.x === i) this.keyTiles.splice(k, 1);
@@ -274,6 +280,28 @@
     const ix = x | 0, iy = y | 0;
     if (ix < 0 || iy < 0 || ix >= level.w || iy >= level.h) return -1;
     return goal.field[iy * level.w + ix];
+  }
+
+  // 「見つけた回復・アーマー」までの距離場。HPが減っているときの誘導用。
+  // v1 の決定打だった「補給物資へのBFS勾配」(地図オラクル) のフォグ版で、
+  // 記憶にあるアイテムしか対象にしないのでカンニングではない。
+  const HEAL2_KINDS = 'hH', ARMOR2_KINDS = 'pV';
+  function computeHealField(world, mem) {
+    const level = world.level, p = world.player;
+    const seeds = [];
+    const wantHeal = p.health < 100, wantArmor = p.armor < ARMOR_MAX;
+    for (let y = 0; y < level.h; y++) {
+      for (let x = 0; x < level.w; x++) {
+        const i = y * level.w + x;
+        if (!mem.itemSeen[i]) continue;
+        const kind = String.fromCharCode(mem.itemKind[i]);
+        if ((wantHeal && HEAL2_KINDS.includes(kind)) || (wantArmor && ARMOR2_KINDS.includes(kind))) {
+          seeds.push([x, y]);
+        }
+      }
+    }
+    if (!seeds.length) return { field: null, target: 'none' };
+    return { field: bfsKnownField(mem, level, seeds, p.keys), target: 'heal' };
   }
 
   // フロンティア (= 未知の隣接タイルを持つ既知の床) までの距離場。
@@ -517,7 +545,8 @@
   }
 
   Object.assign(globalThis, {
-    OBS2_DIM, ExploreMemory, buildObs2, computeKnownGoal, knownGoalDistAt, computeFrontierField,
+    OBS2_DIM, ExploreMemory, buildObs2, computeKnownGoal, knownGoalDistAt,
+    computeFrontierField, computeHealField,
     OBS2_LAYOUT: {
       rays: [N_RAYS, RAY_CH], local: [LOCAL, LOCAL, LOCAL_CH],
       global: [GLOB, GLOB, GLOB_CH], scalars: N_SCALARS,

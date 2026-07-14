@@ -32,6 +32,12 @@
     // 移動区間が報酬の砂漠になって探索がループする (maze15 で実測: 失敗の全てが
     // 「出口未発見のまま停滞」)。progress より小さくして、目標発見後は出口優先
     frontier: 0.05,
+    // HP がしきい値を下回っている間、「見つけた回復・アーマー」への接近に加点する。
+    // E1M4 の失敗の主因が「出口を見つけた後の接近路で削り殺される」に移った
+    // (実測: 失敗33件中19件が出口発見済み) ため、生存側を底上げする。
+    // 記憶にあるアイテムだけが対象 = カンニングではない
+    healSeek: 0.05,
+    healSeekBelow: 60,   // このHP未満でゲートが開く
     revisit: -0.01,      // 同じタイルをうろつく (訪問回数に応じて最大まで漸増)
     // ---- v1 から引き継ぎ ----
     damageDealt: 0.01,
@@ -124,6 +130,7 @@
       this.mem.update(this.world, 0);
       this.goal = computeKnownGoal(this.world, this.mem);
       this.frontier = computeFrontierField(this.world, this.mem);
+      this.healField = null;   // HPゲートが開いたときに張る
       this.exitSeen = this.mem.exits.length > 0;
       this.seenRed = this.mem.seenRed;
       this.seenBlue = this.mem.seenBlue;
@@ -228,6 +235,29 @@
         if (fPrev >= 0 && fCur >= 0) reward += (fPrev - fCur) * REWARD2.frontier;
         if (newTiles > 0 || gotKey) this.frontier = computeFrontierField(w, this.mem);
       }
+
+      // ---- 回復への誘導 (HPが減っている間だけ、ナビ整形に上乗せ) ----
+      // ゲートはステップの前後両方で開いているときだけ (またぎの一発報酬を防ぐ)。
+      // 差分はフロンティア整形と同じく「前ステップ時点の知識の場」で取る
+      if (p.health < REWARD2.healSeekBelow && prev.hp < REWARD2.healSeekBelow) {
+        if (!this.healField) {
+          this.healField = computeHealField(w, this.mem);
+          this.healRev = this.mem.itemRev;
+        }
+        if (this.healField.field) {
+          const hPrev = knownGoalDistAt(this.healField, lv, this.prevTileX, this.prevTileY);
+          const hCur = knownGoalDistAt(this.healField, lv, cx, cy);
+          if (hPrev >= 0 && hCur >= 0) reward += (hPrev - hCur) * REWARD2.healSeek;
+        }
+        // アイテム記憶が変わった (新発見/消滅) か、通れる場所が変わったら張り直す
+        if (newTiles > 0 || gotKey || this.mem.itemRev !== this.healRev) {
+          this.healField = computeHealField(w, this.mem);
+          this.healRev = this.mem.itemRev;
+        }
+      } else {
+        this.healField = null;   // 回復した / ゲートが閉じたら捨てる
+      }
+
       this.prevTileX = cx; this.prevTileY = cy;
 
       // ---- うろつきペナルティ (3回目以降の訪問から漸増) ----
