@@ -116,6 +116,7 @@
       this.steps = 0;
       this.epReward = 0;
       this.levelsCleared = 0;
+      this.hpTrail = [this.world.player.health];   // 各ステージ突入時のHP (診断用)
       this._initMemory();
       this._snapshot();
       this.doorsOpen = this._countOpenDoors();
@@ -312,6 +313,7 @@
           this._applyLevelFilters(() => w.rng());
           this._initMemory();
           this.doorsOpen = this._countOpenDoors();
+          this.hpTrail.push(p.health);
         } else {
           // E1M5 (index 4) を通しで抜けたら完走。迷路スロット (index >= 5) は対象外
           if (cfg.mode === 'campaign' && lv.index === 4) reward += REWARD2.gameClear;
@@ -334,6 +336,7 @@
           kills: lv.kills, totalKills: lv.totalKills,
           itemsGot: lv.itemsGot, totalItems: lv.totalItems,
           hp: p.health,
+          hpTrail: this.hpTrail,
           levelsCleared: this.levelsCleared,
           steps: this.steps,
           epReward: this.epReward,
