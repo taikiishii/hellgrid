@@ -40,8 +40,14 @@
     healSeekBelow: 60,   // このHP未満でゲートが開く
     revisit: -0.01,      // 同じタイルをうろつく (訪問回数に応じて最大まで漸増)
     // ---- v1 から引き継ぎ ----
+    // 戦闘は距離で重み付けする: 近い敵ほど脅威 (噛みつき・至近の命中率・避けにくい
+    // 火球) なので、自衛のキルは遠距離の狙撃より価値が高い。至近で2倍 -> 8タイルで等倍。
+    // ボーナスを控えめにしているのは「わざと引きつけてから倒す」ハックを防ぐため
+    // (引きつける間の被弾は -0.02/HP で課金されるので、2倍程度なら期待値で損になる)
     damageDealt: 0.01,
     kill: 1.0,
+    nearCombatMax: 2.0,   // 至近 (距離0) での倍率
+    nearCombatRange: 8,   // このタイル数以上は等倍
     hp: 0.02,            // HP+アーマーの増減 (対称)
     death: -10,
     item: 0.3,
@@ -177,8 +183,8 @@
       const p = this.world.player, lv = this.world.level;
       this.prev = {
         hp: p.health, armor: p.armor,
-        enemyHp: lv.enemies.reduce((a, e) => a + Math.max(0, e.hp), 0),
-        kills: lv.kills, itemsGot: lv.itemsGot, secrets: lv.secretsFound,
+        enemyHpArr: lv.enemies.map(e => Math.max(0, e.hp)),   // 敵ごと (距離重み付けのため)
+        itemsGot: lv.itemsGot, secrets: lv.secretsFound,
         redKey: p.keys.red, blueKey: p.keys.blue,
         bullets: p.bullets, shells: p.shells,
       };
@@ -217,11 +223,21 @@
       // ---- 記憶を更新 (このステップで視界に入れたものを覚える) ----
       const newTiles = this.mem.update(w, this.steps);
 
-      // ---- 基本報酬 (v1 と同じ骨格) ----
+      // ---- 基本報酬 (v1 と同じ骨格。戦闘だけ距離の重み付き) ----
       const lv = w.level, prev = this.prev;
-      const enemyHp = lv.enemies.reduce((a, e) => a + Math.max(0, e.hp), 0);
-      reward += Math.max(0, prev.enemyHp - enemyHp) * REWARD2.damageDealt;
-      reward += (lv.kills - prev.kills) * REWARD2.kill;
+      // 敵ごとに「与えたダメージ」「倒した」を検出する。敵の配列はレベル内で安定
+      // (死体も配列に残る) なので添字で対応が取れる。至近の敵ほど高く評価する
+      for (let i = 0; i < lv.enemies.length; i++) {
+        const e = lv.enemies[i];
+        const before = prev.enemyHpArr[i];
+        if (before === undefined) continue;
+        const now = Math.max(0, e.hp);
+        if (now >= before) continue;
+        const d = Math.hypot(e.x - p.x, e.y - p.y);
+        const wgt = 1 + (REWARD2.nearCombatMax - 1) * clamp(1 - d / REWARD2.nearCombatRange, 0, 1);
+        reward += (before - now) * REWARD2.damageDealt * wgt;
+        if (now === 0) reward += REWARD2.kill * wgt;
+      }
       reward += ((p.health + p.armor) - (prev.hp + prev.armor)) * REWARD2.hp;
       reward += (lv.itemsGot - prev.itemsGot) * REWARD2.item;
       reward += (lv.secretsFound - prev.secrets) * REWARD2.secret;
