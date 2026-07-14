@@ -88,7 +88,24 @@ STAGES = {
         "mazeMix": 0.15, "mazeSize": 21, "mazeBraid": 0.15, "mazeRooms": 5,
         "maxSteps": 2000,
     },
+    # 最終段階: 通し (HP・弾を持ち越し)。開始ステージを混ぜる逆カリキュラム (v1 と同じ)。
+    # E1M1 スタートを高確率で残すのが肝 (これを外して v1 は 2.90 -> 2.52 に劣化した)。
+    # 記憶は新しいステージごとに白紙。回復整形 (healSeek) の本領はここ
+    "e1m-camp-mix": {
+        "env2": True, "mode": "campaign", "levels": [0, 0, 0, 1, 2, 3],
+        "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.5, 1.0],
+        "startHp": [30, 100], "startArmor": [0, 60],
+        "startBullets": [10, 70], "startShells": [0, 20], "shotgunChance": 0.6,
+        "maxSteps": 12000,
+    },
 }
+
+# 割引率: 実効視野はおよそ 1/(1-gamma)。通しは「4ステージ先まで生き延びる価値」が
+# 見える長さが必要 (v1 教訓1: gamma=0.99 の campaign は目先だけ見て崩壊した)
+GAMMA = {"e1m-camp-mix": 0.999}
+# 長いエピソードは GAE を安定させるため n_steps も伸ばす
+N_STEPS = {"e1m-camp-mix": 256}
 
 
 class EntCoefAnneal(BaseCallback):
@@ -173,15 +190,15 @@ def main() -> None:
     venv = HellgridVecEnv(
         num_envs=args.envs, n_workers=args.workers, cfg=STAGES[args.stage], base_seed=args.seed
     )
-    # エピソードは最長 900 步 (maze15)。gamma=0.995 で視野 ~200 步 =
-    # 「出口発見 (+5) とクリア (+20) が探索の序盤からでも見える」長さ
-    gamma = 0.995
+    # 既定 gamma=0.995 (視野 ~200 步)。通しはステージ別に上書き (GAMMA 参照)
+    gamma = GAMMA.get(args.stage, 0.995)
+    n_steps = N_STEPS.get(args.stage, args.n_steps)
 
     venv = VecMonitor(venv)
     venv = VecNormalize(venv, norm_obs=False, norm_reward=True, gamma=gamma)
 
     kwargs = dict(
-        n_steps=args.n_steps,
+        n_steps=n_steps,
         batch_size=4096,
         n_epochs=4,
         gamma=gamma,
@@ -199,7 +216,7 @@ def main() -> None:
         seed=args.seed,
     )
 
-    print(f"stage={args.stage}  gamma={gamma}  n_steps={args.n_steps}  envs={args.envs}")
+    print(f"stage={args.stage}  gamma={gamma}  n_steps={n_steps}  envs={args.envs}")
     if args.init:
         model = PPO.load(args.init, env=venv, **{k: v for k, v in kwargs.items() if k != "policy_kwargs"})
         print(f"前段の重みを読み込んだ: {args.init}")

@@ -58,6 +58,9 @@
     constructor(cfg = {}) {
       this.cfg = Object.assign({
         levels: null,      // null = 毎エピソードにランダム迷路 / [0,...] = 既存ステージ
+        // 'single' = 1ステージで終了 / 'campaign' = 通し (HP・弾を持ち越して次のステージへ。
+        // 記憶は新しいマップごとに白紙 = 見たことのないマップは知らない、という正直な仕様)
+        mode: 'single',
         mazeMix: 0,        // levels 指定時、この確率でランダム迷路を混ぜる
                            // (固定マップの丸暗記と、手続き生成で得た探索の忘却の両方を防ぐ)
         mazeSize: 11,      // 迷路の一辺 (奇数)
@@ -67,6 +70,13 @@
         frameSkip: 4,
         noEnemies: false,
         noItems: false,
+        // 逆カリキュラム (v1 と同じ): E1M2 以降から始まるエピソードを「消耗した状態」で
+        // 始める。E1M1 スタートは素のまま (序盤を練習し続けないと忘れる — v1 教訓4)
+        startHp: null,       // 例: [30, 100]
+        startArmor: null,
+        startBullets: null,
+        startShells: null,
+        shotgunChance: 0,
         // [lo, hi] を渡すと、エピソードごとに敵をランダムな割合だけ残す。
         // 敵密度の高いステージ (E1M4: 16体) は戦闘スキルが育つ前は0%のまま
         // 動かない (実測: 30M步で出口発見0%)。密度をばらつかせると「解ける
@@ -100,18 +110,8 @@
       else this.world.reset(idx, this.episodeSeed);
       this.world.drainEvents();
 
-      const lv = this.world.level;
-      if (this.cfg.noEnemies) { lv.enemies.length = 0; lv.totalKills = 0; }
-      else if (this.cfg.enemyFraction) {
-        const [lo, hi] = this.cfg.enemyFraction;
-        const f = lo + rng0() * (hi - lo);
-        lv.enemies = lv.enemies.filter(() => rng0() < f);
-        lv.totalKills = lv.enemies.length;
-      }
-      if (this.cfg.noItems) {
-        lv.items = lv.items.filter(it => 'rb'.includes(it.kind));
-        lv.totalItems = lv.items.length;
-      }
+      this._applyLevelFilters(rng0);
+      this._applyStartState(rng0);
 
       this.steps = 0;
       this.epReward = 0;
@@ -120,6 +120,37 @@
       this._snapshot();
       this.doorsOpen = this._countOpenDoors();
       return buildObs2(this.world, this.mem, this.goal, this.obsBuf);
+    }
+
+    // 敵・アイテムの間引き。campaign では次のステージに進むたびにも適用する
+    _applyLevelFilters(rand) {
+      const lv = this.world.level;
+      if (this.cfg.noEnemies) { lv.enemies.length = 0; lv.totalKills = 0; }
+      else if (this.cfg.enemyFraction) {
+        const [lo, hi] = this.cfg.enemyFraction;
+        const f = lo + rand() * (hi - lo);
+        lv.enemies = lv.enemies.filter(() => rand() < f);
+        lv.totalKills = lv.enemies.length;
+      }
+      if (this.cfg.noItems) {
+        lv.items = lv.items.filter(it => 'rb'.includes(it.kind));
+        lv.totalItems = lv.items.length;
+      }
+    }
+
+    // 逆カリキュラム: E1M2 以降スタートのエピソードだけ消耗した状態で始める。
+    // E1M1 スタートと迷路は素のまま
+    _applyStartState(rand) {
+      const cfg = this.cfg, p = this.world.player;
+      const idx = this.world.level.index;
+      if (idx === 0 || idx >= 5) return;
+      const pick = r => r[0] + rand() * (r[1] - r[0]);
+      if (cfg.startHp) p.health = Math.max(1, Math.round(pick(cfg.startHp)));
+      if (cfg.startArmor) p.armor = Math.round(pick(cfg.startArmor));
+      if (cfg.startBullets) p.bullets = Math.round(pick(cfg.startBullets));
+      if (cfg.startShells) p.shells = Math.round(pick(cfg.startShells));
+      if (cfg.shotgunChance && rand() < cfg.shotgunChance) p.hasShotgun = true;
+      if (!p.hasShotgun && p.weapon === 'shotgun') p.weapon = 'pistol';
     }
 
     // 記憶を白紙にして開始地点の視界を書き込む。
@@ -265,6 +296,8 @@
       if (visits > 2) reward += REWARD2.revisit * Math.min(1, (visits - 2) / 8);
 
       // ---- 終了判定 ----
+      // 注意: LEVELS には生成迷路のスロットが追加されているので、World.nextLevel に
+      // 任せると E1M5 の次に迷路へ進んでしまう。実ステージは5枚と明示して扱う
       let terminated = false, truncated = false;
       if (w.state === 'dead') {
         reward += REWARD2.death;
@@ -272,7 +305,18 @@
       } else if (w.state === 'levelEnd' || w.state === 'gameClear') {
         reward += REWARD2.levelClear;
         this.levelsCleared++;
-        terminated = true;
+        if (cfg.mode === 'campaign' && w.state === 'levelEnd' && lv.index < 4) {
+          // 通し: HP・弾はそのまま次のステージへ。記憶と各種の場は白紙から
+          w.nextLevel();
+          w.drainEvents();
+          this._applyLevelFilters(() => w.rng());
+          this._initMemory();
+          this.doorsOpen = this._countOpenDoors();
+        } else {
+          // E1M5 (index 4) を通しで抜けたら完走。迷路スロット (index >= 5) は対象外
+          if (cfg.mode === 'campaign' && lv.index === 4) reward += REWARD2.gameClear;
+          terminated = true;
+        }
       }
       if (!terminated && this.steps >= cfg.maxSteps) truncated = true;
 

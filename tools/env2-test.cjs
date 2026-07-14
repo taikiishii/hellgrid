@@ -379,5 +379,47 @@ console.log('\n[9] 回復への誘導 (HP低下時の既知マップ整形):');
     `HP100: ゲートが閉じて整形なし (${full.length}歩, 最大報酬 ${full.length ? Math.max(...full).toFixed(3) : '-'})`);
 }
 
+// ---- 10. 通し (campaign): ステージ遷移と完走 ----
+console.log('\n[10] 通し (campaign モード):');
+{
+  const exitOf = lv => {
+    for (let y = 0; y < lv.h; y++) for (let x = 0; x < lv.w; x++) if (lv.grid[y][x] === 'X') return [x, y];
+    return null;
+  };
+  const pressExit = env => {
+    const w = env.world, lv = w.level;
+    const [ex, ey] = exitOf(lv);
+    // 出口の隣の床に立って出口を向き、E を押す
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const ax = ex + dx, ay = ey + dy;
+      if (ax < 0 || ay < 0 || ax >= lv.w || ay >= lv.h || lv.grid[ay][ax] !== null) continue;
+      w.player.x = ax + 0.5; w.player.y = ay + 0.5;
+      w.player.z = lv.heights[ay][ax];
+      w.player.dirX = ex - ax; w.player.dirY = ey - ay;
+      w.player.planeX = -w.player.dirY * 0.66; w.player.planeY = w.player.dirX * 0.66;
+      return env.step([0, 0, 2, 1, 0, 1, 0]);
+    }
+    throw new Error('出口の隣に床がない');
+  };
+  const env = new HellgridEnv2({
+    mode: 'campaign', levels: [0], noEnemies: true, noItems: false, maxSteps: 2000,
+  });
+  env.reset(7);
+  env.world.player.health = 55;   // 持ち越しの確認用に減らしておく
+  env._snapshot();
+  const r1 = pressExit(env);      // E1M1 クリア -> E1M2 へ
+  ok(!r1.terminated && env.world.level.index === 1 && r1.info.levelsCleared === 1,
+    `E1M1 クリアで終了せず E1M2 へ進む (levelsCleared=${r1.info.levelsCleared})`);
+  ok(env.world.player.health === 55, `HP が持ち越される (${env.world.player.health})`);
+  ok(env.mem.w === env.world.level.w && env.mem.knownFloor < env.mem.totalFloor,
+    `記憶は新しいステージで白紙から (カバレッジ ${(env.mem.knownFloor / env.mem.totalFloor * 100).toFixed(0)}%)`);
+  // E1M2 -> M5 を順にクリアして完走まで (キーが要るステージも X 直押しで抜けられる)
+  let last = null;
+  for (let i = 0; i < 4; i++) last = pressExit(env);
+  ok(last.terminated && last.info.levelsCleared === 5,
+    `E1M5 で完走・終了 (levelsCleared=${last.info.levelsCleared}, 報酬 ${last.reward.toFixed(1)})`);
+  ok(last.reward > 60, `完走ボーナスが出る (+20+50 <= ${last.reward.toFixed(1)})`);
+}
+
 console.log(failures ? `\nNG ${failures}件の失敗` : '\nすべてOK');
 process.exitCode = failures ? 1 : 0;
