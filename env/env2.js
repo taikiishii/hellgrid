@@ -365,5 +365,10 @@
     }
   }
 
-  Object.assign(globalThis, { HellgridEnv2, REWARD2, ACTION_NVEC2 });
+  // TURN_UNITS2 などはブラウザの AI ドライバ (js/ai2.js) も使う。
+  // 学習時とデモで行動の解釈がズレると、学習した方策がそのまま動かなくなる
+  Object.assign(globalThis, {
+    HellgridEnv2, REWARD2, ACTION_NVEC2,
+    TURN_UNITS2, PITCH_UNITS2, WEAPON_BY_ACTION2,
+  });
 })();
