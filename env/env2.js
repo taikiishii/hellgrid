@@ -51,6 +51,16 @@
     kill: 1.0,
     nearCombatMax: 2.0,   // 至近 (距離0) での倍率
     nearCombatRange: 8,   // このタイル数以上は等倍
+    // デモで観察された「でたらめな乱射と武器ガチャガチャ」対策。
+    // 弾のコストが実質無料 (-0.002/発) だと、エントロピー由来の無駄撃ちが
+    // 刈り取られない。「外した射撃だけ」を明確に損にすることで、
+    // 狙い (±1.5度旋回) と射撃の連動に初めて差益を作る
+    missedShot: -0.01,    // 誰にも当てなかったステップの消費弾1発あたり (ammoSpent に上乗せ)
+    weaponSwitch: -0.02,  // 武器切替1回 (無目的な切替の抑制)
+    // 進路上の敵ボーナス: キルした敵が「目標への既知マップ距離で自分より先」
+    // (= 道を塞いでいる) なら、キル報酬をさらに乗せる。どかすための戦闘に
+    // 道具的価値を与える
+    blockerKillBonus: 0.5,   // キル報酬への上乗せ倍率 (+50%)
     hp: 0.02,            // HP+アーマーの増減 (対称)
     death: -10,
     item: 0.3,
@@ -205,6 +215,7 @@
 
       // ---- 行動を入力に変換 (v1 と同一) ----
       const weapon = WEAPON_BY_ACTION2[action[6]];
+      const weaponBefore = p.weapon;
       if (weapon) w.pressKey(weapon === 'pistol' ? 'Digit1' : weapon === 'shotgun' ? 'Digit2' : 'Digit3');
       if (action[5]) w.pressKey('KeyE');
       w.keys['KeyW'] = action[0] === 1;
@@ -230,21 +241,38 @@
       const lv = w.level, prev = this.prev;
       // 敵ごとに「与えたダメージ」「倒した」を検出する。敵の配列はレベル内で安定
       // (死体も配列に残る) なので添字で対応が取れる。至近の敵ほど高く評価する
+      let dmgDealt = 0;
       for (let i = 0; i < lv.enemies.length; i++) {
         const e = lv.enemies[i];
         const before = prev.enemyHpArr[i];
         if (before === undefined) continue;
         const now = Math.max(0, e.hp);
         if (now >= before) continue;
+        dmgDealt += before - now;
         const d = Math.hypot(e.x - p.x, e.y - p.y);
         const wgt = 1 + (REWARD2.nearCombatMax - 1) * clamp(1 - d / REWARD2.nearCombatRange, 0, 1);
         reward += (before - now) * REWARD2.damageDealt * wgt;
-        if (now === 0) reward += REWARD2.kill * wgt;
+        if (now === 0) {
+          let kw = wgt;
+          // 進路を塞いでいた敵 (目標への既知マップ距離で自分より先) はさらに乗せる。
+          // 場は前ステップ知識のもの (この時点ではまだ張り直していない) で判定する
+          if (this.goal.field) {
+            const de = knownGoalDistAt(this.goal, lv, e.x, e.y);
+            const dp = knownGoalDistAt(this.goal, lv, p.x, p.y);
+            if (de >= 0 && dp >= 0 && de < dp) kw += REWARD2.blockerKillBonus;
+          }
+          reward += REWARD2.kill * kw;
+        }
       }
       reward += ((p.health + p.armor) - (prev.hp + prev.armor)) * REWARD2.hp;
       reward += (lv.itemsGot - prev.itemsGot) * REWARD2.item;
       reward += (lv.secretsFound - prev.secrets) * REWARD2.secret;
-      reward += Math.max(0, (prev.bullets - p.bullets) + (prev.shells - p.shells)) * REWARD2.ammoSpent;
+      const shotsFired = Math.max(0, (prev.bullets - p.bullets) + (prev.shells - p.shells));
+      reward += shotsFired * REWARD2.ammoSpent;
+      // 外した射撃 (弾を消費したのに誰にも当てていない) だけを明確に損にする
+      if (shotsFired > 0 && dmgDealt <= 0) reward += shotsFired * REWARD2.missedShot;
+      // 武器を実際に切り替えたステップのコスト
+      if (weapon && p.weapon !== weaponBefore) reward += REWARD2.weaponSwitch;
       reward += REWARD2.step;
 
       const gotKey = (p.keys.red && !prev.redKey) || (p.keys.blue && !prev.blueKey);
