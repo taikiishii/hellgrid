@@ -99,13 +99,24 @@ STAGES = {
         "startBullets": [10, 70], "startShells": [0, 20], "shotgunChance": 0.6,
         "maxSteps": 12000,
     },
+    # 通しの残る壁 = 消耗状態の E1M4 (条件付き通過率 41〜52% で飽和)。
+    # E1M4 スタートを2倍にして練習量を寄せる (単発で 24→49% を生んだ手法の通し版)。
+    # E1M1 スタートは 3/7 残す (忘却対策の下限 — v1 教訓4)
+    "e1m-camp-mix2": {
+        "env2": True, "mode": "campaign", "levels": [0, 0, 0, 1, 2, 3, 3],
+        "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.5, 1.0],
+        "startHp": [30, 100], "startArmor": [0, 60],
+        "startBullets": [10, 70], "startShells": [0, 20], "shotgunChance": 0.6,
+        "maxSteps": 12000,
+    },
 }
 
 # 割引率: 実効視野はおよそ 1/(1-gamma)。通しは「4ステージ先まで生き延びる価値」が
 # 見える長さが必要 (v1 教訓1: gamma=0.99 の campaign は目先だけ見て崩壊した)
-GAMMA = {"e1m-camp-mix": 0.999}
+GAMMA = {"e1m-camp-mix": 0.999, "e1m-camp-mix2": 0.999}
 # 長いエピソードは GAE を安定させるため n_steps も伸ばす
-N_STEPS = {"e1m-camp-mix": 256}
+N_STEPS = {"e1m-camp-mix": 256, "e1m-camp-mix2": 256}
 
 
 class EntCoefAnneal(BaseCallback):
