@@ -53,6 +53,7 @@ def main() -> None:
                     help="観測の一部をゼロ埋めして依存度を測る")
     ap.add_argument("--levels", type=int, nargs="+", default=None,
                     help="ステージ設定の levels を上書きしてステージ別に測る (迷路は混ぜない)")
+    ap.add_argument("--algo", choices=["ppo", "rppo"], default="ppo")
     args = ap.parse_args()
 
     cfg = dict(STAGES[args.stage])
@@ -62,7 +63,11 @@ def main() -> None:
     venv = HellgridVecEnv(
         num_envs=args.envs, n_workers=args.workers, cfg=cfg, base_seed=args.seed
     )
-    model = PPO.load(args.model, device="cpu")
+    if args.algo == "rppo":
+        from sb3_contrib import RecurrentPPO
+        model = RecurrentPPO.load(args.model, device="cpu")
+    else:
+        model = PPO.load(args.model, device="cpu")
 
     zero_slices = ABLATIONS[args.ablate] if args.ablate else []
 
@@ -76,9 +81,15 @@ def main() -> None:
 
     obs = venv.reset()
     results: list[dict] = []
+    # rppo は再帰状態を引き回す (episode_start でエピソード境界の状態リセット)。
+    # ppo でも同じ呼び方で動く (state は None のまま)
+    state = None
+    ep_start = np.ones(args.envs, dtype=bool)
     while len(results) < args.episodes:
-        actions, _ = model.predict(censor(obs), deterministic=args.deterministic)
+        actions, state = model.predict(
+            censor(obs), state=state, episode_start=ep_start, deterministic=args.deterministic)
         obs, _, dones, infos = venv.step(actions)
+        ep_start = dones
         for i, d in enumerate(dones):
             if d and len(results) < args.episodes:
                 results.append(infos[i])

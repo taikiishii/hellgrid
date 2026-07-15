@@ -29,6 +29,11 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
 from stable_baselines3.common.vec_env import VecMonitor, VecNormalize
 
+try:
+    from sb3_contrib import RecurrentPPO   # Lv2 (LSTM) 用。--algo rppo のときだけ必要
+except ImportError:
+    RecurrentPPO = None
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from hellgrid_env import HellgridVecEnv  # noqa: E402
 
@@ -193,9 +198,12 @@ def main() -> None:
     ap.add_argument("--n-steps", type=int, default=128)
     ap.add_argument("--init", type=str, default=None, help="前段の重みを引き継ぐ (.zip)")
     ap.add_argument("--seed", type=int, default=0)
+    # Lv2 化: RecurrentPPO (LSTM)。MLP とはアーキテクチャが違うため --init の互換はない
+    # (rppo の系譜は rppo 同士でのみ引き継げる)。出力先も runs2/<stage>-rppo に分ける
+    ap.add_argument("--algo", choices=["ppo", "rppo"], default="ppo")
     args = ap.parse_args()
 
-    out = ROOT / "runs2" / args.stage
+    out = ROOT / "runs2" / (args.stage + ("-rppo" if args.algo == "rppo" else ""))
     out.mkdir(parents=True, exist_ok=True)
 
     venv = HellgridVecEnv(
@@ -208,6 +216,17 @@ def main() -> None:
     venv = VecMonitor(venv)
     venv = VecNormalize(venv, norm_obs=False, norm_reward=True, gamma=gamma)
 
+    if args.algo == "rppo":
+        # LSTM は勾配更新が重いので、MLP部を絞ってバッファも軽くする
+        policy_kwargs = dict(
+            lstm_hidden_size=256,
+            net_arch=dict(pi=[256], vf=[256]),
+        )
+    else:
+        # 学習器が律速 (実測: 学習ループの83%)。512x512 から半減して2倍速にする。
+        # 観測 5866 -> 256 の初段だけで 1.5M パラメータあるので表現力は足りる
+        policy_kwargs = dict(net_arch=dict(pi=[256, 256], vf=[256, 256]))
+
     kwargs = dict(
         n_steps=n_steps,
         batch_size=4096,
@@ -219,20 +238,20 @@ def main() -> None:
         learning_rate=3e-4,
         vf_coef=0.5,
         max_grad_norm=0.5,
-        # 学習器が律速 (実測: 学習ループの83%)。512x512 から半減して2倍速にする。
-        # 観測 5866 -> 256 の初段だけで 1.5M パラメータあるので表現力は足りる
-        policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256])),
+        policy_kwargs=policy_kwargs,
         tensorboard_log=str(ROOT / "runs2"),
         verbose=1,
         seed=args.seed,
     )
 
-    print(f"stage={args.stage}  gamma={gamma}  n_steps={n_steps}  envs={args.envs}")
+    Algo = RecurrentPPO if args.algo == "rppo" else PPO
+    policy_name = "MlpLstmPolicy" if args.algo == "rppo" else "MlpPolicy"
+    print(f"stage={args.stage}  algo={args.algo}  gamma={gamma}  n_steps={n_steps}  envs={args.envs}")
     if args.init:
-        model = PPO.load(args.init, env=venv, **{k: v for k, v in kwargs.items() if k != "policy_kwargs"})
+        model = Algo.load(args.init, env=venv, **{k: v for k, v in kwargs.items() if k != "policy_kwargs"})
         print(f"前段の重みを読み込んだ: {args.init}")
     else:
-        model = PPO("MlpPolicy", venv, **kwargs)
+        model = Algo(policy_name, venv, **kwargs)
 
     model.learn(
         total_timesteps=args.steps,
