@@ -189,6 +189,110 @@ function advance() {
   if (curWorld.state === 'playing' && !ai) canvas.requestPointerLock();
 }
 
+// ======================= ゲームパッド (PS4 / 汎用) =======================
+// Gamepad API の standard マッピングを使う。DualShock 4 は USB でも Bluetooth でも
+// 同じ配列添字で取れるので、接続方式をコードで区別する必要はない。
+// World への流し込みは「キー真偽 + look デルタ」という既存の入力形式のままなので、
+// シミュレーション・決定性・学習環境には一切影響しない。
+//
+//   左スティック: 移動   右スティック: 視点   R2: 射撃   ×: 使う/決定
+//   L1/R1: 武器切替   Options: マップ   被弾で振動 (強さはダメージ量に比例)
+
+const PAD = {
+  deadzone: 0.18,
+  turnSpeed: 1000,    // 右スティック全倒し時の旋回速度 (マウス移動量/秒 ≈ 130度/秒)
+  pitchSpeed: 500,
+  prev: [],           // 前フレームのボタン状態 (押した瞬間の検出用)
+  held: {},           // パッドが立てた移動キー (キーボードと共存させるため)
+  shoot: false,
+  lastHitT: -1,       // 振動済みの被弾時刻
+  active: false,      // パッド操作中 (「クリックで照準」の案内を消す)
+};
+const PAD_WEAPON_ORDER = ['pistol', 'shotgun', 'knife'];
+
+window.addEventListener('gamepadconnected', e => {
+  showMessage(`コントローラ接続: ${e.gamepad.id.slice(0, 44)}`);
+});
+
+// デッドゾーン + 二乗カーブ (小さく倒すと精密、全倒しで最速)
+function padCurve(v) {
+  const a = Math.abs(v);
+  if (a < PAD.deadzone) return 0;
+  const s = (a - PAD.deadzone) / (1 - PAD.deadzone);
+  return Math.sign(v) * s * s;
+}
+
+function padPressedEdge(gp, i) {
+  return !!(gp.buttons[i] && gp.buttons[i].pressed) && !PAD.prev[i];
+}
+
+function pollGamepad(dt) {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  let gp = null;
+  for (const p of pads) if (p && p.connected) { gp = p; break; }
+  if (!gp) { PAD.shoot = false; PAD.active = false; globalThis.gamepadActive = false; return; }
+
+  if (ui.screen === 'title') {
+    if (padPressedEdge(gp, 0) || padPressedEdge(gp, 9)) newGame();   // × / Options で開始
+    else if (padPressedEdge(gp, 3)) newGame(true);                    // △ で AI デモ
+    PAD.prev = gp.buttons.map(b => b.pressed);
+    return;
+  }
+  if (ai) { PAD.shoot = false; PAD.prev = gp.buttons.map(b => b.pressed); return; }
+
+  const w = curWorld;
+  const mx = padCurve(gp.axes[0]), my = padCurve(gp.axes[1]);
+  const lx = padCurve(gp.axes[2]), ly = padCurve(gp.axes[3]);
+  if (mx || my || lx || ly || gp.buttons.some(b => b.pressed)) PAD.active = true;
+  globalThis.gamepadActive = PAD.active;
+
+  if (w.state === 'playing') {
+    // 左スティック → 移動。倒れている間だけ上書きし、離したら自分が立てたぶんだけ戻す
+    // (キーボードの WASD と共存できる)
+    const dirs = { KeyW: my < 0, KeyS: my > 0, KeyA: mx < 0, KeyD: mx > 0 };
+    for (const k in dirs) {
+      if (dirs[k]) { w.keys[k] = true; PAD.held[k] = true; }
+      else if (PAD.held[k]) { w.keys[k] = false; PAD.held[k] = false; }
+    }
+    // 右スティック → 視点 (フレームレート非依存)
+    if (lx || ly) w.look(lx * PAD.turnSpeed * dt, ly * PAD.pitchSpeed * dt);
+    // R2 → 射撃 (押しっぱなし)。frame() 側で mouseDown と OR される
+    PAD.shoot = !!(gp.buttons[7] && (gp.buttons[7].value > 0.4 || gp.buttons[7].pressed));
+    // × → 使う (ドア・スイッチ)
+    if (padPressedEdge(gp, 0)) w.pressKey('KeyE');
+    // L1/R1 → 武器切替 (ショットガン未所持ならスキップ)
+    for (const [btn, dir] of [[4, -1], [5, 1]]) {
+      if (!padPressedEdge(gp, btn)) continue;
+      let i = PAD_WEAPON_ORDER.indexOf(w.player.weapon);
+      do { i = (i + dir + 3) % 3; } while (PAD_WEAPON_ORDER[i] === 'shotgun' && !w.player.hasShotgun);
+      w.pressKey(i === 0 ? 'Digit1' : i === 1 ? 'Digit2' : 'Digit3');
+    }
+    if (padPressedEdge(gp, 9)) ui.showMap = !ui.showMap;   // Options → マップ
+  } else {
+    PAD.shoot = false;
+    // リザルト系の画面: × で進む (クリック相当)
+    if (padPressedEdge(gp, 0)) {
+      if (w.state === 'dead') curWorld.restartLevel();
+      else if (w.state === 'levelEnd') advance();
+      else if (w.state === 'gameClear') toTitle();
+    }
+  }
+  PAD.prev = gp.buttons.map(b => b.pressed);
+
+  // 被弾したら振動。強さはダメージ量に比例 (World が lastHit に記録している)
+  const lh = w.player.lastHit;
+  if (lh && lh.t !== PAD.lastHitT) {
+    PAD.lastHitT = lh.t;
+    if (gp.vibrationActuator) {
+      gp.vibrationActuator.playEffect('dual-rumble', {
+        duration: 180,
+        strongMagnitude: Math.min(1, lh.dmg / 20),
+        weakMagnitude: Math.min(1, lh.dmg / 35),
+      }).catch(() => {});
+    }
+  }
+}
+
 // AI デモは止まらずに進み続ける。クリア/死亡から少し待って自動で次へ。
 //
 // 方策は「通し」(stage=campaign) で学習されているので、ステージをまたいで HP・弾・
@@ -259,6 +363,8 @@ function frame(now) {
   const dt = Math.min(0.05, (now - lastTime) / 1000);
   lastTime = now;
 
+  pollGamepad(dt);   // PS4/汎用コントローラ (タイトル画面の決定ボタンも担う)
+
   if (ui.screen === 'title') {
     renderTitle();
     requestAnimationFrame(frame);
@@ -266,7 +372,7 @@ function frame(now) {
   }
 
   const w = curWorld;
-  if (!ai) w.shootHeld = mouseDown && pointerLocked;
+  if (!ai) w.shootHeld = (mouseDown && pointerLocked) || PAD.shoot;
 
   // 固定タイムステップ。ここで dt をいじっても World の物理は一切変わらない
   // (step に渡すのは常に SIM_DT)。変わるのは「1秒に何ステップ進めるか」だけ。

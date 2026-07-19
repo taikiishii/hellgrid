@@ -1384,8 +1384,8 @@ function renderOverlays(dt) {
     ctx.fillStyle = `rgba(${ui.message},${clamp(messageT, 0, 1)})`;
     ctx.fillText(message, 14, 26);
   }
-  // AI がプレイ中はマウス操作の案内を出さない (js/main.js の ai)
-  if (!pointerLocked && game.state === 'playing' && !ai) {
+  // AI がプレイ中・ゲームパッド操作中はマウス操作の案内を出さない (js/main.js)
+  if (!pointerLocked && game.state === 'playing' && !ai && !globalThis.gamepadActive) {
     ctx.font = 'bold 14px monospace';
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
     ctx.textAlign = 'center';
