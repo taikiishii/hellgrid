@@ -107,6 +107,10 @@
         // 出口が作動しない。「逃げ切り」を封じて戦闘を道具的に必要にする。
         // v1 arena の失敗 (いきなり全滅強制 = 解けない) を避けるため割合を混合できる
         killGate: null,        // 例: [0.5, 1.0]
+        // ステージ別のゲート上書き。E1M3/M4 はキーカード必須の三重課題 (敵撃破+
+        // キー探索+施錠ドア) が厳しく、ゲートを乗せると通しが詰む。{3:[0,0],4:[0,0]}
+        // のように index -> [lo,hi] で、そのステージだけゲートを無効化/緩和できる
+        killGateByLevel: null,
         mazeEnemies: null,     // 迷路に置く敵の数 [lo, hi] (例: [1, 3])
       }, cfg);
       this.world = null;
@@ -164,11 +168,13 @@
         lv.items = lv.items.filter(it => 'rb'.includes(it.kind));
         lv.totalItems = lv.items.length;
       }
-      // キルゲート: 敵総数の一定割合 (エピソードごとに抽選) を必要キル数にする
-      if (this.cfg.killGate && lv.totalKills > 0) {
-        const [lo, hi] = this.cfg.killGate;
+      // キルゲート: 敵総数の一定割合 (エピソードごとに抽選) を必要キル数にする。
+      // ステージ別の上書き (killGateByLevel) があればそちらを優先する
+      const gateRange = (this.cfg.killGateByLevel && this.cfg.killGateByLevel[lv.index]) || this.cfg.killGate;
+      if (gateRange && lv.totalKills > 0) {
+        const [lo, hi] = gateRange;
         const f = lo + rand() * (hi - lo);
-        lv.killGate = Math.min(lv.totalKills, Math.max(1, Math.ceil(f * lv.totalKills)));
+        lv.killGate = f <= 0 ? 0 : Math.min(lv.totalKills, Math.max(1, Math.ceil(f * lv.totalKills)));
       }
     }
 

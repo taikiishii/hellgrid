@@ -495,6 +495,18 @@ console.log('\n[12] キルゲート (戦闘カリキュラム):');
   const cl = ce.world.level;
   ok(cl.killGate > 0 && cl.killGate <= cl.totalKills,
     `通しE1M1にゲート ${cl.killGate}/${cl.totalKills}`);
+
+  // ステージ別ゲート上書き: E1M3 (index2) だけゲートなし
+  const g3 = new HellgridEnv2({
+    levels: [2], noEnemies: false, killGate: [0.5, 0.5], killGateByLevel: { 2: [0, 0] },
+  });
+  g3.reset(1);
+  ok(!g3.world.level.killGate, `E1M3 はゲート上書きで無効 (killGate=${g3.world.level.killGate})`);
+  const g1 = new HellgridEnv2({
+    levels: [0], noEnemies: false, killGate: [0.5, 0.5], killGateByLevel: { 2: [0, 0] },
+  });
+  g1.reset(1);
+  ok(g1.world.level.killGate > 0, `E1M1 は既定どおりゲートあり (${g1.world.level.killGate})`);
 }
 
 console.log(failures ? `\nNG ${failures}件の失敗` : '\nすべてOK');
