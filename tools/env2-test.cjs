@@ -486,6 +486,15 @@ console.log('\n[12] キルゲート (戦闘カリキュラム):');
   goTo();
   r = env.step([0, 0, 3, 1, 0, 1, 0]);
   ok(r.terminated && r.info.levelsCleared === 1, `全滅後は出口でクリア (報酬 ${r.reward.toFixed(1)})`);
+
+  // 通し + ゲート: 各ステージにゲートがかかり、遷移後も再設定される
+  const ce = new HellgridEnv2({
+    mode: 'campaign', levels: [0], noEnemies: false, killGate: [0.5, 0.5], maxSteps: 3000,
+  });
+  ce.reset(3);
+  const cl = ce.world.level;
+  ok(cl.killGate > 0 && cl.killGate <= cl.totalKills,
+    `通しE1M1にゲート ${cl.killGate}/${cl.totalKills}`);
 }
 
 console.log(failures ? `\nNG ${failures}件の失敗` : '\nすべてOK');
