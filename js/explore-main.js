@@ -5,10 +5,11 @@
  * index.html (main.js) には手を入れず、独立したページとして動く。
  * 「見たものだけ」で学習した各段階の方策を切り替えて観察する:
  *
- *   K         方策の切り替え (探索者 / ナビゲーター / チャンピオン)
+ *   K         方策の切り替え (探索者 / ナビゲーター / チャンピオン / ハンター)
  *   1〜5      E1M1〜E1M5 を単発で (素の状態から)
  *   C         通し (E1M1 から HP・弾持ち越し。チャンピオンの訓練条件)
  *   R         ランダム迷路 (21×21・部屋つき。探索者の訓練条件)
+ *   H         狩りモード (敵つき迷路 + キルゲート。ハンターの訓練条件)
  *   N         同じモードで新しいシード
  *   V         フォグ・オブ・ウォー (AIの記憶) の表示切替
  *   M         全体マップ (神の視点。フォグとの対比用)
@@ -38,8 +39,8 @@ let stepOnce = false;
 let mode = { kind: 'campaign' };
 let mazeIdx = -1;
 
-// 方策 (js/policy2-*.js が POLICIES2 に登録している)
-const POLICY_ORDER = ['champion', 'navigator', 'explorer'];
+// 方策 (js/policy2-*.js が POLICIES2 に登録している)。手法の進化の順に並べる
+const POLICY_ORDER = ['explorer', 'navigator', 'champion', 'hunter'];
 let policyName = 'champion';
 const policyCache = {};
 
@@ -57,14 +58,19 @@ function startGame() {
   const seed = randSeed();
   let level = 0;
   if (mode.kind === 'single') level = mode.level;
-  else if (mode.kind === 'maze') {
-    const def = generateMaze(seed, { size: 21, braid: 0.15, rooms: 5 });
+  else if (mode.kind === 'maze' || mode.kind === 'hunt') {
+    const opts = mode.kind === 'hunt'
+      ? { size: 17, braid: 0.15, rooms: 3, enemies: [2, 6] }
+      : { size: 21, braid: 0.15, rooms: 5 };
+    const def = generateMaze(seed, opts);
     if (mazeIdx < 0) { mazeIdx = LEVELS.length; LEVELS.push(def); }
     else LEVELS[mazeIdx] = def;
     level = mazeIdx;
   }
   if (!curWorld) curWorld = new World({ seed, level });
   else curWorld.reset(level, seed);
+  // 狩りモード: 敵を全滅させるまで出口が作動しない (ハンターの訓練条件)
+  if (mode.kind === 'hunt') curWorld.level.killGate = curWorld.level.totalKills;
   curWorld.drainEvents();
   ai = new AIDriver2(curWorld, currentPolicy());
   showModeMessage();
@@ -73,6 +79,7 @@ function startGame() {
 function showModeMessage() {
   const m = mode.kind === 'single' ? `E1M${mode.level + 1} 単発`
     : mode.kind === 'campaign' ? '通し (E1M1→M5・持ち越し)'
+    : mode.kind === 'hunt' ? '狩り (敵つき迷路・全滅ゲート)'
     : 'ランダム迷路 21×21';
   showMessage(`${POLICIES2[policyName].label} / ${m}`);
 }
@@ -158,11 +165,15 @@ function renderDemoBadge() {
   ctx.fillRect(6, 4, 340, 24);
   ctx.fillStyle = '#8fd';
   ctx.font = 'bold 10px monospace';
-  const m = mode.kind === 'single' ? `E1M${mode.level + 1}` : mode.kind === 'campaign' ? '通し' : '迷路';
-  ctx.fillText(`${POLICIES2[policyName].label} [${m}] x${SPEEDS[speedIdx]}${paused ? ' ⏸' : ''}`, 12, 20);
+  const m = mode.kind === 'single' ? `E1M${mode.level + 1}` : mode.kind === 'campaign' ? '通し'
+    : mode.kind === 'hunt' ? '狩り' : '迷路';
+  let tag = `${POLICIES2[policyName].label} [${m}] x${SPEEDS[speedIdx]}${paused ? ' ⏸' : ''}`;
+  const lv = curWorld.level;
+  if (lv.killGate) tag += `  討伐 ${lv.kills}/${lv.killGate}`;   // 狩りモードの進捗
+  ctx.fillText(tag, 12, 20);
   ctx.fillStyle = '#789';
   ctx.font = '9px monospace';
-  ctx.fillText('K:方策 1-5:単発 C:通し R:迷路 N:新シード V:記憶 M:全体図', 12, 44);
+  ctx.fillText('K:方策 1-5:単発 C:通し R:迷路 H:狩り N:新シード V:記憶 M:全体図', 12, 44);
 }
 
 // ======================= 入力 =======================
@@ -179,6 +190,7 @@ document.addEventListener('keydown', e => {
   if (/^Digit[1-5]$/.test(e.code)) { mode = { kind: 'single', level: +e.code[5] - 1 }; startGame(); return; }
   if (e.code === 'KeyC') { mode = { kind: 'campaign' }; startGame(); return; }
   if (e.code === 'KeyR') { mode = { kind: 'maze' }; startGame(); return; }
+  if (e.code === 'KeyH') { mode = { kind: 'hunt' }; startGame(); return; }
   if (e.code === 'KeyN') { startGame(); return; }
   if (e.code === 'KeyV') { showFog = !showFog; return; }
   if (e.code === 'KeyM') { ui.showMap = !ui.showMap; return; }
