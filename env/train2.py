@@ -93,6 +93,28 @@ STAGES = {
         "mazeMix": 0.15, "mazeSize": 21, "mazeBraid": 0.15, "mazeRooms": 5,
         "maxSteps": 2000,
     },
+    # ==== 戦闘カリキュラム (キルゲート) ====
+    # 「規定数の敵を倒すまで出口が作動しない」ルールで、戦闘を道具的に必要にする。
+    # 報酬レバー5連敗の結論: 環境が回避を最適解にしている限り戦闘は学ばれない。
+    # v1 arena の失敗 (いきなり13体全滅 = 解けない) を避け、敵1〜3体の迷路から始める
+    "hunt1": {
+        "env2": True, "mazeSize": 13, "mazeBraid": 0.15, "mazeRooms": 2,
+        "mazeEnemies": [1, 3], "killGate": [1.0, 1.0],   # 全滅ゲート (でも敵は1〜3体)
+        "maxSteps": 800,
+    },
+    "hunt2": {
+        "env2": True, "mazeSize": 17, "mazeBraid": 0.15, "mazeRooms": 3,
+        "mazeEnemies": [2, 6], "killGate": [0.5, 1.0],
+        "maxSteps": 1000,
+    },
+    # 実ステージ版: ゲート割合と敵密度を混合し、迷路 (敵つき) も混ぜ続ける
+    "e1m-hunt": {
+        "env2": True, "levels": [0, 1, 2, 3, 4], "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.5, 1.0], "killGate": [0.25, 0.75],
+        "mazeMix": 0.25, "mazeSize": 17, "mazeBraid": 0.15, "mazeRooms": 3,
+        "mazeEnemies": [2, 6],
+        "maxSteps": 2000,
+    },
     # 最終段階: 通し (HP・弾を持ち越し)。開始ステージを混ぜる逆カリキュラム (v1 と同じ)。
     # E1M1 スタートを高確率で残すのが肝 (これを外して v1 は 2.90 -> 2.52 に劣化した)。
     # 記憶は新しいステージごとに白紙。回復整形 (healSeek) の本領はここ

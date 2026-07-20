@@ -259,11 +259,14 @@
     return dist;
   }
 
-  // 目標: 見つけた出口 (到達可能なら) > 見つけた未所持キーカード > なし
+  // 目標: 見つけた出口 (到達可能なら) > 見つけた未所持キーカード > なし。
+  // キルゲートが閉じている間は出口を目標にしない (倒すまで押せないので、
+  // 出口前で待つより探索して敵を見つけるほうが正しい)
   function computeKnownGoal(world, mem) {
     const level = world.level, keys = world.player.keys;
     const pi = (world.player.y | 0) * level.w + (world.player.x | 0);
-    if (mem.exits.length) {
+    const gateClosed = level.killGate && level.kills < level.killGate;
+    if (mem.exits.length && !gateClosed) {
       const seeds = [];
       for (const [x, y] of mem.exits) seeds.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
       const f = bfsKnownField(mem, level, seeds, keys);
@@ -372,7 +375,10 @@
       const hit = rayWall2(world, p.x, p.y, dx, dy);
       o[b + 0] = hit.dist / MAX_D;
       o[b + 1] = hit.ch === 'D' ? 1 : 0;
-      o[b + 2] = (hit.ch === 'R' && !p.keys.red) || (hit.ch === 'B' && !p.keys.blue) ? 1 : 0;
+      // 「まだ開かないもの」チャネル: キー未所持の施錠ドア + キルゲート中の出口
+      const gated = level.killGate && level.kills < level.killGate;
+      o[b + 2] = (hit.ch === 'R' && !p.keys.red) || (hit.ch === 'B' && !p.keys.blue) ||
+                 (hit.ch === 'X' && gated) ? 1 : 0;
       o[b + 3] = hit.ch === 'X' ? 1 : 0;
       o[b + 4] = 1;
       o[b + 11] = 1;
@@ -475,7 +481,10 @@
           o[c + 3 * plane] = p.keys.blue ? 1 : 0.5;
         } else {
           o[c + 1 * plane] = 1;                       // '#' '&' '=' '*' は壁 ('*' は秘密のまま)
-          if (ch === 'X') o[c + 8 * plane] = 1;       // 出口は壁 + 出口チャネル
+          // 出口は壁 + 出口チャネル。キルゲート中は 0.5 (施錠ドアの表現と同じ流儀)
+          if (ch === 'X') {
+            o[c + 8 * plane] = level.killGate && level.kills < level.killGate ? 0.5 : 1;
+          }
         }
         const et = mem.enemyT[ti];
         if (et >= 0) o[c + 6 * plane] = mMax(0, 1 - (level.time - et) / ENEMY_MEMORY_S);

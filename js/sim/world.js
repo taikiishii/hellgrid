@@ -654,6 +654,13 @@ class World {
         return;
       }
       if (ch === 'X') {
+        // キルゲート (任意ルール): 規定数の敵を倒すまで出口スイッチは作動しない。
+        // level.killGate が未設定 (通常のゲーム) なら従来どおり即クリア
+        if (level.killGate && level.kills < level.killGate) {
+          this.emit('message', `出口は封鎖されている (あと${level.killGate - level.kills}体)`);
+          this.emit('sound', 'denied');
+          return;
+        }
         this.emit('sound', 'switch_');
         this.endLevel();
         return;

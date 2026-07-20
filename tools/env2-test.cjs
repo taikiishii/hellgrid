@@ -78,6 +78,7 @@ console.log('\n[1] 迷路生成 (50シード, size=11):');
   checkConfig('15x15 braid=0.15        ', { size: 15, braid: 0.15 });
   checkConfig('21x21 braid+部屋5個     ', { size: 21, braid: 0.15, rooms: 5 });
   checkConfig('25x25 braid+部屋7個     ', { size: 25, braid: 0.15, rooms: 7 });
+  checkConfig('13x13 部屋2+敵1〜3      ', { size: 13, braid: 0.15, rooms: 2, enemies: [1, 3] });
   const a = generateMaze(7, { size: 11 }).map.join('\n');
   const b = generateMaze(7, { size: 11 }).map.join('\n');
   const c = generateMaze(8, { size: 11 }).map.join('\n');
@@ -450,6 +451,41 @@ console.log('\n[11] 観測v3 (飛翔弾・被弾方向):');
   w.time += 2.5;
   o = buildObs2(w, env.mem, env.goal, env.obsBuf);
   ok(o[S_OFF + 25] === 0 && o[S_OFF + 27] === 0, '被弾情報は2秒で減衰して消える');
+}
+
+// ---- 12. キルゲート: 倒すまで出口が作動しない ----
+console.log('\n[12] キルゲート (戦闘カリキュラム):');
+{
+  const env = new HellgridEnv2({
+    mazeSize: 13, mazeBraid: 0.15, mazeRooms: 2, mazeEnemies: [2, 2],
+    killGate: [1.0, 1.0], maxSteps: 500,
+  });
+  env.reset(9);
+  const w = env.world, lv = w.level;
+  ok(lv.enemies.length === 2 && lv.killGate === 2,
+    `迷路に敵${lv.enemies.length}体・ゲート${lv.killGate}体`);
+  // 出口の隣へテレポートして E → ゲートが閉じているので終わらない
+  let ex = -1, ey = -1;
+  for (let y = 0; y < lv.h; y++) for (let x = 0; x < lv.w; x++) if (lv.grid[y][x] === 'X') { ex = x; ey = y; }
+  const goTo = () => {
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const ax = ex + dx, ay = ey + dy;
+      if (ax < 0 || ay < 0 || ax >= lv.w || ay >= lv.h || lv.grid[ay][ax] !== null) continue;
+      w.player.x = ax + 0.5; w.player.y = ay + 0.5; w.player.z = lv.heights[ay][ax];
+      w.player.dirX = ex - ax; w.player.dirY = ey - ay;
+      w.player.planeX = -w.player.dirY * 0.66; w.player.planeY = w.player.dirX * 0.66;
+    }
+  };
+  goTo();
+  let r = env.step([0, 0, 3, 1, 0, 1, 0]);
+  ok(!r.terminated && w.state === 'playing', 'ゲートが閉じている間は出口を押しても終わらない');
+  // ゲート中は出口が目標にならない (探索が続く)
+  ok(env.goal.target !== 'exit', `ゲート中の目標は出口ではない (${env.goal.target})`);
+  // 敵を全滅させてから E → クリア
+  for (const e of lv.enemies) w.damageEnemy(e, 9999);
+  goTo();
+  r = env.step([0, 0, 3, 1, 0, 1, 0]);
+  ok(r.terminated && r.info.levelsCleared === 1, `全滅後は出口でクリア (報酬 ${r.reward.toFixed(1)})`);
 }
 
 console.log(failures ? `\nNG ${failures}件の失敗` : '\nすべてOK');

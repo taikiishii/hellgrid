@@ -103,6 +103,11 @@
         // 動かない (実測: 30M步で出口発見0%)。密度をばらつかせると「解ける
         // エピソード」が常に混ざり、成功信号が途切れない (v1 教訓6の運用)
         enemyFraction: null,   // 例: [0.25, 1.0]
+        // 戦闘カリキュラム: 敵総数の [lo,hi] 割合 (エピソードごとに抽選) を倒すまで
+        // 出口が作動しない。「逃げ切り」を封じて戦闘を道具的に必要にする。
+        // v1 arena の失敗 (いきなり全滅強制 = 解けない) を避けるため割合を混合できる
+        killGate: null,        // 例: [0.5, 1.0]
+        mazeEnemies: null,     // 迷路に置く敵の数 [lo, hi] (例: [1, 3])
       }, cfg);
       this.world = null;
       this.mazeIdx = -1;   // LEVELS 配列に生成迷路を差し込むスロット
@@ -120,6 +125,7 @@
       } else {
         const def = generateMaze(this.episodeSeed, {
           size: this.cfg.mazeSize, braid: this.cfg.mazeBraid, rooms: this.cfg.mazeRooms,
+          enemies: this.cfg.mazeEnemies,
         });
         // このコンテキストの LEVELS に1スロット確保して毎回差し替える
         // (World.loadLevel は LEVELS[index] を読むだけなので、これで注入できる)
@@ -158,6 +164,12 @@
         lv.items = lv.items.filter(it => 'rb'.includes(it.kind));
         lv.totalItems = lv.items.length;
       }
+      // キルゲート: 敵総数の一定割合 (エピソードごとに抽選) を必要キル数にする
+      if (this.cfg.killGate && lv.totalKills > 0) {
+        const [lo, hi] = this.cfg.killGate;
+        const f = lo + rand() * (hi - lo);
+        lv.killGate = Math.min(lv.totalKills, Math.max(1, Math.ceil(f * lv.totalKills)));
+      }
     }
 
     // 逆カリキュラム: E1M2 以降スタートのエピソードだけ消耗した状態で始める。
@@ -189,6 +201,8 @@
       this.seenBlue = this.mem.seenBlue;
       this.exitCount = this.mem.exits.length;
       this.keyCount = this.mem.keyTiles.length;
+      const lv0 = this.world.level;
+      this.gateClosed = !!(lv0.killGate && lv0.kills < lv0.killGate);
       const p = this.world.player;
       this.prevTileX = p.x | 0;
       this.prevTileY = p.y | 0;
@@ -293,11 +307,15 @@
       // ---- 見つけた目標への接近 (既知マップ上のBFSによるポテンシャル整形) ----
       // 知識が変わったら場を張り直す。差分は必ず「今の場」で前タイル vs 現タイルを
       // 取るので、場の更新による距離の飛びが報酬に化けることはない。
-      if (newTiles > 0 || gotKey ||
+      // キルゲートの開閉が変わったら目標場を張り直す (閉→出口は目標にならず探索、
+      // 開→出口への整形が復活する。obs2 の computeKnownGoal がゲートを見ている)
+      const gateClosed = !!(lv.killGate && lv.kills < lv.killGate);
+      if (newTiles > 0 || gotKey || gateClosed !== this.gateClosed ||
           this.mem.exits.length !== this.exitCount || this.mem.keyTiles.length !== this.keyCount) {
         this.goal = computeKnownGoal(w, this.mem);
         this.exitCount = this.mem.exits.length;
         this.keyCount = this.mem.keyTiles.length;
+        this.gateClosed = gateClosed;
       }
       const cx = p.x | 0, cy = p.y | 0;
       if (this.goal.field) {

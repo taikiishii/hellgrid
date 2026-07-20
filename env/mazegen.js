@@ -121,6 +121,24 @@
         q.push(k);
       }
     }
+    // ---- enemies: 戦闘カリキュラム用の敵配置 ----
+    // P から5歩以上離れた床にランダムに置く (開幕即交戦を避ける)。
+    // 種類は 亡兵60% / 焔鬼25% / 散弾兵15% — 弱い敵から当てる練習をさせる
+    if (opts.enemies) {
+      const [lo, hi] = opts.enemies;
+      const n = lo + Math.floor(rng() * (hi - lo + 1));
+      const cand = [];
+      for (let i = 0; i < dist.length; i++) {
+        if (dist[i] >= 5 && grid[(i / w) | 0][i % w] === '.') cand.push(i);
+      }
+      for (let k = 0; k < n && cand.length; k++) {
+        const j = (rng() * cand.length) | 0;
+        const t = cand.splice(j, 1)[0];
+        const r = rng();
+        grid[(t / w) | 0][t % w] = r < 0.6 ? 'Z' : r < 0.85 ? 'I' : 'G';
+      }
+    }
+
     const fx = far % w, fy = (far / w) | 0;
     // 出口スイッチを埋め込む壁。壁は複数の通路に面しうるので、
     // 「隣接する床タイルのうち P から最も近いものが、最も遠い」壁を選ぶ
