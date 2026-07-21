@@ -509,5 +509,56 @@ console.log('\n[12] キルゲート (戦闘カリキュラム):');
   ok(g1.world.level.killGate > 0, `E1M1 は既定どおりゲートあり (${g1.world.level.killGate})`);
 }
 
+// ---- 13. 戦闘スキル強化: 弾薬誘導・火球比率・被弾ペナルティ倍率 ----
+console.log('\n[13] 戦闘スキル強化 (弾薬誘導・ストレイフ設定):');
+{
+  const { computeAmmoField } = ctx;
+  // 弾薬誘導: 弾が少なく、記憶に弾薬があれば、そこへ近づくと正の報酬
+  const env = new HellgridEnv2({ levels: [0], noEnemies: true, noItems: false, maxSteps: 300 });
+  env.reset(3);
+  const w = env.world, lv = w.level;
+  env.mem.known.fill(1);
+  env.frontier = ctx.computeFrontierField(w, env.mem);
+  const it = lv.items.find(i => 'aAsS'.includes(i.kind));
+  ok(!!it, '弾薬アイテムが存在する');
+  if (it) {
+    const ti = (it.y | 0) * lv.w + (it.x | 0);
+    env.mem.itemSeen[ti] = 1; env.mem.itemKind[ti] = it.kind.charCodeAt(0); env.mem.itemRev++;
+    w.player.bullets = 5;    // ammoSeekBelow=20 未満
+    env._snapshot();
+    const f = computeAmmoField(w, env.mem);
+    ok(f.field, '弾薬距離場が張れる');
+    // 弾薬へ1歩近づくと正の報酬
+    const px = w.player.x | 0, py = w.player.y | 0;
+    let best = null, bd = f.field[py * lv.w + px];
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const ax = px + dx, ay = py + dy;
+      if (ax < 0 || ay < 0 || ax >= lv.w || ay >= lv.h) continue;
+      const d = f.field[ay * lv.w + ax];
+      if (d >= 0 && d < bd) { bd = d; best = [dx, dy]; }
+    }
+    if (best && bd >= 1) {
+      w.player.x = px + best[0] + 0.5; w.player.y = py + best[1] + 0.5;
+      const r = env.step([0, 0, 2, 1, 0, 0, 0]);
+      ok(r.reward > 0, `弾薬へ近づくと正の報酬 (${r.reward.toFixed(3)})`);
+    } else ok(true, '(弾薬が隣接で近接テストスキップ)');
+  }
+  // 火球比率: 焔鬼(I)が多く混ざる
+  const fire = generateMaze(3, { size: 15, rooms: 2, enemies: [10, 10], fireballRatio: 0.6 });
+  const flat = fire.map.join('');
+  const imps = (flat.match(/I/g) || []).length, total = (flat.match(/[ZIG]/g) || []).length;
+  ok(total >= 8 && imps / total > 0.4, `火球持ちが多数 (焔鬼 ${imps}/${total})`);
+  // 被弾ペナルティ倍率: hpDamageScale=2 で被弾報酬が2倍マイナス
+  const e2 = new HellgridEnv2({ levels: [0], noEnemies: true, hpDamageScale: 2.0, maxSteps: 100 });
+  e2.reset(1); e2.world.player.health = 100; e2._snapshot();
+  e2.world.player.health = 80;   // -20 HP
+  const r2 = e2.step([0, 0, 2, 1, 0, 0, 0]);
+  const e3 = new HellgridEnv2({ levels: [0], noEnemies: true, hpDamageScale: 1.0, maxSteps: 100 });
+  e3.reset(1); e3.world.player.health = 100; e3._snapshot();
+  e3.world.player.health = 80;
+  const r3 = e3.step([0, 0, 2, 1, 0, 0, 0]);
+  ok(r2.reward < r3.reward - 0.3, `被弾ペナルティ2倍が効く (scale2 ${r2.reward.toFixed(2)} < scale1 ${r3.reward.toFixed(2)})`);
+}
+
 console.log(failures ? `\nNG ${failures}件の失敗` : '\nすべてOK');
 process.exitCode = failures ? 1 : 0;

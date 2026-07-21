@@ -41,6 +41,10 @@
     // 記憶にあるアイテムだけが対象 = カンニングではない
     healSeek: 0.05,
     healSeekBelow: 60,   // このHP未満でゲートが開く
+    // 弾が少ない間、「見つけた弾薬」への接近に加点する (回復誘導の弾版)。
+    // 弾切れで「倒したくても倒せない」消耗死を防ぐ。ammoSeekBelow はピストル弾の残数
+    ammoSeek: 0.05,
+    ammoSeekBelow: 20,
     revisit: -0.01,      // 同じタイルをうろつく (訪問回数に応じて最大まで漸増)
     // ---- v1 から引き継ぎ ----
     // 戦闘は距離で重み付けする: 近い敵ほど脅威 (噛みつき・至近の命中率・避けにくい
@@ -112,6 +116,8 @@
         // のように index -> [lo,hi] で、そのステージだけゲートを無効化/緩和できる
         killGateByLevel: null,
         mazeEnemies: null,     // 迷路に置く敵の数 [lo, hi] (例: [1, 3])
+        mazeFireballRatio: null,  // 迷路の敵の火球持ち (焔鬼) 比率。高いとストレイフ要求
+        hpDamageScale: 1,      // 被弾ペナルティの倍率 (回避を促す段階で >1 にする)
       }, cfg);
       this.world = null;
       this.mazeIdx = -1;   // LEVELS 配列に生成迷路を差し込むスロット
@@ -129,7 +135,7 @@
       } else {
         const def = generateMaze(this.episodeSeed, {
           size: this.cfg.mazeSize, braid: this.cfg.mazeBraid, rooms: this.cfg.mazeRooms,
-          enemies: this.cfg.mazeEnemies,
+          enemies: this.cfg.mazeEnemies, fireballRatio: this.cfg.mazeFireballRatio,
         });
         // このコンテキストの LEVELS に1スロット確保して毎回差し替える
         // (World.loadLevel は LEVELS[index] を読むだけなので、これで注入できる)
@@ -202,6 +208,7 @@
       this.goal = computeKnownGoal(this.world, this.mem);
       this.frontier = computeFrontierField(this.world, this.mem);
       this.healField = null;   // HPゲートが開いたときに張る
+      this.ammoField = null;   // 弾が少なくなったときに張る
       this.exitSeen = this.mem.exits.length > 0;
       this.seenRed = this.mem.seenRed;
       this.seenBlue = this.mem.seenBlue;
@@ -286,7 +293,10 @@
           reward += REWARD2.kill * kw;
         }
       }
-      reward += ((p.health + p.armor) - (prev.hp + prev.armor)) * REWARD2.hp;
+      // HP+アーマーの増減 (対称)。被弾側だけ hpDamageScale で強められる
+      // (ストレイフ/回避を促す段階で「立ち止まって撃ち合う」の期待値を負にする)
+      const dHp = (p.health + p.armor) - (prev.hp + prev.armor);
+      reward += dHp * REWARD2.hp * (dHp < 0 ? cfg.hpDamageScale : 1);
       reward += (lv.itemsGot - prev.itemsGot) * REWARD2.item;
       reward += (lv.secretsFound - prev.secrets) * REWARD2.secret;
       const shotsFired = Math.max(0, (prev.bullets - p.bullets) + (prev.shells - p.shells));
@@ -361,6 +371,25 @@
         }
       } else {
         this.healField = null;   // 回復した / ゲートが閉じたら捨てる
+      }
+
+      // ---- 弾薬への誘導 (弾が少ない間だけ。回復誘導と同じ流儀) ----
+      if (p.bullets < REWARD2.ammoSeekBelow && prev.bullets < REWARD2.ammoSeekBelow) {
+        if (!this.ammoField) {
+          this.ammoField = computeAmmoField(w, this.mem);
+          this.ammoRev = this.mem.itemRev;
+        }
+        if (this.ammoField.field) {
+          const aPrev = knownGoalDistAt(this.ammoField, lv, this.prevTileX, this.prevTileY);
+          const aCur = knownGoalDistAt(this.ammoField, lv, cx, cy);
+          if (aPrev >= 0 && aCur >= 0) reward += (aPrev - aCur) * REWARD2.ammoSeek;
+        }
+        if (newTiles > 0 || gotKey || this.mem.itemRev !== this.ammoRev) {
+          this.ammoField = computeAmmoField(w, this.mem);
+          this.ammoRev = this.mem.itemRev;
+        }
+      } else {
+        this.ammoField = null;
       }
 
       this.prevTileX = cx; this.prevTileY = cy;

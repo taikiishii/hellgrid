@@ -312,6 +312,23 @@
     return { field: bfsKnownField(mem, level, seeds, p.keys), target: 'heal' };
   }
 
+  // 「見つけた弾薬」までの距離場。弾が少ないときの誘導用 (回復誘導の弾版)。
+  // 弾切れで「倒したくても倒せない」消耗死を防ぐ。記憶にあるものだけが対象
+  const AMMO2_KINDS = 'aAsS';   // a/A クリップ・弾薬箱, s/S シェル
+  function computeAmmoField(world, mem) {
+    const level = world.level, p = world.player;
+    const seeds = [];
+    for (let y = 0; y < level.h; y++) {
+      for (let x = 0; x < level.w; x++) {
+        const i = y * level.w + x;
+        if (!mem.itemSeen[i]) continue;
+        if (AMMO2_KINDS.includes(String.fromCharCode(mem.itemKind[i]))) seeds.push([x, y]);
+      }
+    }
+    if (!seeds.length) return { field: null, target: 'none' };
+    return { field: bfsKnownField(mem, level, seeds, p.keys), target: 'ammo' };
+  }
+
   // フロンティア (= 未知の隣接タイルを持つ既知の床) までの距離場。
   // 「新タイル発見」報酬は発見の瞬間にしか出ず、次のフロンティアまで既知の通路を
   // 歩く区間が報酬の砂漠になる (実測: 探索がループして停滞する)。この場で
@@ -592,7 +609,7 @@
 
   Object.assign(globalThis, {
     OBS2_DIM, ExploreMemory, buildObs2, computeKnownGoal, knownGoalDistAt,
-    computeFrontierField, computeHealField,
+    computeFrontierField, computeHealField, computeAmmoField,
     OBS2_LAYOUT: {
       rays: [N_RAYS, RAY_CH], local: [LOCAL, LOCAL, LOCAL_CH],
       global: [GLOB, GLOB, GLOB_CH], scalars: N_SCALARS,

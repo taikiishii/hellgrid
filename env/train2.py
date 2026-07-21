@@ -107,6 +107,15 @@ STAGES = {
         "mazeEnemies": [2, 6], "killGate": [0.5, 1.0],
         "maxSteps": 1000,
     },
+    # 戦闘スキル強化: 火球持ち (焔鬼) を増やした迷路で、被弾ペナルティを2倍にする。
+    # 立ち止まって撃ち合うと損なので、避けながら (ストレイフ) 撃つ・弾を節約する・
+    # 弾薬に寄る、が創発することを狙う。弾薬誘導 (ammoSeek) も効く段階
+    "hunt-skill": {
+        "env2": True, "mazeSize": 15, "mazeBraid": 0.15, "mazeRooms": 3,
+        "mazeEnemies": [3, 7], "mazeFireballRatio": 0.6, "killGate": [0.5, 1.0],
+        "hpDamageScale": 2.0,
+        "maxSteps": 1200,
+    },
     # 実ステージ版: ゲート割合と敵密度を混合し、迷路 (敵つき) も混ぜ続ける
     "e1m-hunt": {
         "env2": True, "levels": [0, 1, 2, 3, 4], "noEnemies": False, "noItems": False,

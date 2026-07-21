@@ -123,10 +123,13 @@
     }
     // ---- enemies: 戦闘カリキュラム用の敵配置 ----
     // P から5歩以上離れた床にランダムに置く (開幕即交戦を避ける)。
-    // 種類は 亡兵60% / 焔鬼25% / 散弾兵15% — 弱い敵から当てる練習をさせる
+    // 既定は 亡兵60% / 焔鬼25% / 散弾兵15% — 弱い敵から当てる練習をさせる。
+    // opts.fireballRatio を上げると焔鬼 (火球持ち) が増え、避けないと削られる状況を作る
+    // = ストレイフ (射線をずらしながら撃つ) を要求する
     if (opts.enemies) {
       const [lo, hi] = opts.enemies;
       const n = lo + Math.floor(rng() * (hi - lo + 1));
+      const fb = opts.fireballRatio != null ? opts.fireballRatio : 0.25;
       const cand = [];
       for (let i = 0; i < dist.length; i++) {
         if (dist[i] >= 5 && grid[(i / w) | 0][i % w] === '.') cand.push(i);
@@ -135,7 +138,8 @@
         const j = (rng() * cand.length) | 0;
         const t = cand.splice(j, 1)[0];
         const r = rng();
-        grid[(t / w) | 0][t % w] = r < 0.6 ? 'Z' : r < 0.85 ? 'I' : 'G';
+        // r < fb: 焔鬼(I, 火球) / 次の15%: 散弾兵(G) / 残り: 亡兵(Z)
+        grid[(t / w) | 0][t % w] = r < fb ? 'I' : r < fb + 0.15 ? 'G' : 'Z';
       }
     }
 
