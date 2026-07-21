@@ -162,6 +162,21 @@ STAGES = {
         "startBullets": [10, 70], "startShells": [0, 20], "shotgunChance": 0.6,
         "maxSteps": 12000,
     },
+    # v4: 全戦闘通しの最終壁 = E1M4→E1M5 の遷移 (camp-hunt2/3 とも「4ステージ止まり0」)。
+    # 原因は逆カリキュラムの開始分布に E1M5 (消耗状態) が無く未訓練だったこと。
+    # 開始ステージに E1M4 を厚く + E1M5 を追加して、消耗した M4/M5 を直接練習する。
+    # E1M1 も忘却防止に高確率で残す (v1 教訓4)
+    "e1m-camp-hunt4": {
+        "env2": True, "mode": "campaign", "levels": [0, 0, 1, 2, 3, 3, 4],
+        "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.5, 1.0],
+        "killGate": [0.25, 0.4],
+        "killGateByLevel": {2: [0, 0], 3: [0, 0]},
+        "hpDamageScale": 1.5,
+        "startHp": [40, 100], "startArmor": [0, 60],
+        "startBullets": [20, 70], "startShells": [0, 25], "shotgunChance": 0.6,
+        "maxSteps": 12000,
+    },
     # 最終段階: 通し (HP・弾を持ち越し)。開始ステージを混ぜる逆カリキュラム (v1 と同じ)。
     # E1M1 スタートを高確率で残すのが肝 (これを外して v1 は 2.90 -> 2.52 に劣化した)。
     # 記憶は新しいステージごとに白紙。回復整形 (healSeek) の本領はここ
@@ -188,11 +203,11 @@ STAGES = {
 
 # 割引率: 実効視野はおよそ 1/(1-gamma)。通しは「4ステージ先まで生き延びる価値」が
 # 見える長さが必要 (v1 教訓1: gamma=0.99 の campaign は目先だけ見て崩壊した)
-GAMMA = {"e1m-camp-mix": 0.999, "e1m-camp-mix2": 0.999,
-         "e1m-camp-hunt": 0.999, "e1m-camp-hunt2": 0.999, "e1m-camp-hunt3": 0.999}
+GAMMA = {"e1m-camp-mix": 0.999, "e1m-camp-mix2": 0.999, "e1m-camp-hunt": 0.999,
+         "e1m-camp-hunt2": 0.999, "e1m-camp-hunt3": 0.999, "e1m-camp-hunt4": 0.999}
 # 長いエピソードは GAE を安定させるため n_steps も伸ばす
-N_STEPS = {"e1m-camp-mix": 256, "e1m-camp-mix2": 256,
-           "e1m-camp-hunt": 256, "e1m-camp-hunt2": 256, "e1m-camp-hunt3": 256}
+N_STEPS = {"e1m-camp-mix": 256, "e1m-camp-mix2": 256, "e1m-camp-hunt": 256,
+           "e1m-camp-hunt2": 256, "e1m-camp-hunt3": 256, "e1m-camp-hunt4": 256}
 
 
 class EntCoefAnneal(BaseCallback):
