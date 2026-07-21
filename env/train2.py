@@ -147,6 +147,21 @@ STAGES = {
         "startBullets": [10, 70], "startShells": [0, 20], "shotgunChance": 0.6,
         "maxSteps": 12000,
     },
+    # v3: 戦闘スキル強化を通しに組み込む。camp-hunt2 は完走0%・死亡100% (戦闘の
+    # 消耗が5ステージ持ち越しで複利に削る) だった。単発で効いた被弾低減 (hpDamageScale
+    # =1.5) + 弾薬誘導 (自動) + ゲート軽減 (0.25-0.4) で消耗を抑えて完走を狙う。
+    # 火球持ちを避ける動機を与えつつ、5ステージ通すのでゲートは control 気味に
+    "e1m-camp-hunt3": {
+        "env2": True, "mode": "campaign", "levels": [0, 0, 0, 1, 2, 3],
+        "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.5, 1.0],
+        "killGate": [0.25, 0.4],
+        "killGateByLevel": {2: [0, 0], 3: [0, 0]},
+        "hpDamageScale": 1.5,   # 被弾を嫌って避ける (単発では 2.0 が効いた)
+        "startHp": [30, 100], "startArmor": [0, 60],
+        "startBullets": [10, 70], "startShells": [0, 20], "shotgunChance": 0.6,
+        "maxSteps": 12000,
+    },
     # 最終段階: 通し (HP・弾を持ち越し)。開始ステージを混ぜる逆カリキュラム (v1 と同じ)。
     # E1M1 スタートを高確率で残すのが肝 (これを外して v1 は 2.90 -> 2.52 に劣化した)。
     # 記憶は新しいステージごとに白紙。回復整形 (healSeek) の本領はここ
@@ -174,10 +189,10 @@ STAGES = {
 # 割引率: 実効視野はおよそ 1/(1-gamma)。通しは「4ステージ先まで生き延びる価値」が
 # 見える長さが必要 (v1 教訓1: gamma=0.99 の campaign は目先だけ見て崩壊した)
 GAMMA = {"e1m-camp-mix": 0.999, "e1m-camp-mix2": 0.999,
-         "e1m-camp-hunt": 0.999, "e1m-camp-hunt2": 0.999}
+         "e1m-camp-hunt": 0.999, "e1m-camp-hunt2": 0.999, "e1m-camp-hunt3": 0.999}
 # 長いエピソードは GAE を安定させるため n_steps も伸ばす
 N_STEPS = {"e1m-camp-mix": 256, "e1m-camp-mix2": 256,
-           "e1m-camp-hunt": 256, "e1m-camp-hunt2": 256}
+           "e1m-camp-hunt": 256, "e1m-camp-hunt2": 256, "e1m-camp-hunt3": 256}
 
 
 class EntCoefAnneal(BaseCallback):
