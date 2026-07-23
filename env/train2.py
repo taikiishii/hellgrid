@@ -129,6 +129,29 @@ STAGES = {
         "gunKillBonus": 1.0,
         "maxSteps": 1200,
     },
+    # 銃使用カリキュラム 第2段 (ブートストラップ): hunt-gun1 はナイフ・フォールバックで
+    # プラトー (クリア21%)。銃を使う前にナイフで倒す既定行動が抜けない。そこでナイフを
+    # 一時的にほぼ無力化 (0.1) して**銃で倒すしかない**状況を作り、銃競技力を強制的に
+    # 立ち上げる。これは恒久的ナイフ弱体化 (失敗) と別物 = 銃スキルを仕込む一時的道具で、
+    # この後 hunt-gun2 で素のナイフ + gun-kill-gate に戻して定着させる。
+    "hunt-gun-boot": {
+        "env2": True, "mazeSize": 13, "mazeBraid": 0.15, "mazeRooms": 2,
+        "mazeEnemies": [2, 5], "mazeFireballRatio": 0.2,
+        "killGate": [0.5, 1.0],       # 敵の大半を倒すまで出口が開かない
+        "knifeDamageScale": 0.1,      # ナイフをほぼ無力化 -> 銃で倒すしかない
+        "gunKillBonus": 1.0,
+        "maxSteps": 1200,
+    },
+    # 銃使用カリキュラム 第3段: ナイフを素(1.0)に戻し gun-kill-gate で定着させる。
+    # ブートで得た銃競技力を保ったまま「ゲートは銃キルで開ける・ナイフは自衛」を学ぶ。
+    # 敵をやや増やしゲートも上げて、通し前の総仕上げにする
+    "hunt-gun2": {
+        "env2": True, "mazeSize": 15, "mazeBraid": 0.15, "mazeRooms": 3,
+        "mazeEnemies": [3, 6], "mazeFireballRatio": 0.3,
+        "gunKillGate": True, "killGate": [0.4, 0.6],
+        "gunKillBonus": 0.6,          # ゲートで銃を要求しつつ報酬は控えめに戻す
+        "maxSteps": 1500,
+    },
     # 実ステージ版: ゲート割合と敵密度を混合し、迷路 (敵つき) も混ぜ続ける
     "e1m-hunt": {
         "env2": True, "levels": [0, 1, 2, 3, 4], "noEnemies": False, "noItems": False,
