@@ -116,6 +116,19 @@ STAGES = {
         "hpDamageScale": 2.0,
         "maxSteps": 1200,
     },
+    # 銃使用カリキュラム 第1段: 「銃キルで出口が開く」を易しい単発で学ばせる。
+    # camp-hunt7 (gun-kill-gate を通しにいきなり) は、ナイフ専門家 warm-start では
+    # 銃を使う前にナイフで倒し gunKills=0 で詰んだ。キルゲートで戦闘を得た時と同じく
+    # 単発・低ゲートから立ち上げる。敵2〜4・銃キル1〜2体でゲート開放 (残りはナイフ可)。
+    # gunKillBonus=1.0 で銃キルを即時に強く報い、habit を上書きする即時信号を作る。
+    # 火球は低め (避けでなく銃使用の学習に集中)。ナイフ威力は素のまま (完走を削らない)
+    "hunt-gun1": {
+        "env2": True, "mazeSize": 13, "mazeBraid": 0.15, "mazeRooms": 2,
+        "mazeEnemies": [2, 4], "mazeFireballRatio": 0.2,
+        "gunKillGate": True, "killGate": [0.34, 0.5],
+        "gunKillBonus": 1.0,
+        "maxSteps": 1200,
+    },
     # 実ステージ版: ゲート割合と敵密度を混合し、迷路 (敵つき) も混ぜ続ける
     "e1m-hunt": {
         "env2": True, "levels": [0, 1, 2, 3, 4], "noEnemies": False, "noItems": False,

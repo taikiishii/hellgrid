@@ -136,6 +136,9 @@
         // ナイフは自衛に使えるが出口を開けるには銃キルが要る = 戦闘力を削らずに銃を
         // 要求する (ナイフ弱体化と違い完走を犠牲にしない狙い)
         gunKillGate: false,
+        // 銃キル1体あたりの追加報酬 (gun-kill-gate カリキュラムの即時信号用)。
+        // ゲート(必要性)と報酬(魅力)を併用して銃使用の学習を立ち上げる
+        gunKillBonus: 0,
       }, cfg);
       this.world = null;
       this.mazeIdx = -1;   // LEVELS 配列に生成迷路を差し込むスロット
@@ -329,6 +332,9 @@
             if (de >= 0 && dp >= 0 && de < dp) kw += REWARD2.blockerKillBonus;
           }
           reward += REWARD2.kill * kw;
+          // 銃キルへの直接ボーナス (即時信号)。gun-kill-gate のカリキュラムで、
+          // 「銃で倒すと得」を habit より強く刻んで銃使用の学習を立ち上げる
+          if (!isKnife) reward += cfg.gunKillBonus;
         }
       }
       // HP+アーマーの増減 (対称)。被弾側だけ hpDamageScale で強められる

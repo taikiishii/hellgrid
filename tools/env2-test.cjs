@@ -677,5 +677,24 @@ console.log('\n[17] 銃キルゲート (gunKillGate):');
   ok(r.terminated && r.info.levelsCleared === 1, `デフォルトはナイフキルで出口が開く (従来不変)`);
 }
 
+// ---- 18. 銃キル直接ボーナス (gunKillBonus) ----
+console.log('\n[18] 銃キル直接ボーナス (gunKillBonus):');
+{
+  // section14 と同じ手法でキル報酬を測る。gunKillBonus は銃キルにのみ乗る
+  const killRew = (weapon, bonus) => {
+    const env = new HellgridEnv2({ mazeSize: 13, mazeRooms: 3, mazeEnemies: [1, 1], gunKillBonus: bonus, maxSteps: 500 });
+    env.reset(7);
+    const w = env.world, lv = w.level, p = w.player, e = lv.enemies[0];
+    e.hp = 60; env._snapshot();
+    p.weapon = weapon; e.x = p.x + 2; e.y = p.y;   // 至近(距離2)で武器差だけ見る
+    w.damageEnemy(e, 9999);
+    return env.step([0, 0, 2, 1, 0, 0, 0]).reward;
+  };
+  const gun0 = killRew('pistol', 0), gun1 = killRew('pistol', 1.0);
+  const knife1 = killRew('knife', 1.0), knife0 = killRew('knife', 0);
+  ok(Math.abs((gun1 - gun0) - 1.0) < 1e-6, `銃キルに gunKillBonus 1.0 が乗る (${(gun1 - gun0).toFixed(2)})`);
+  ok(Math.abs(knife1 - knife0) < 1e-6, `ナイフキルには乗らない (差 ${(knife1 - knife0).toFixed(2)})`);
+}
+
 console.log(failures ? `\nNG ${failures}件の失敗` : '\nすべてOK');
 process.exitCode = failures ? 1 : 0;
