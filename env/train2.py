@@ -295,6 +295,24 @@ STAGES = {
         "startBullets": [20, 70], "startShells": [0, 25], "shotgunChance": 0.6,
         "maxSteps": 12000,
     },
+    # 銃使用カリキュラム 最終段: 通しに gun-kill-gate 統合 (両立の最終検証)。
+    # camp-hunt7 は camp-hunt4 からいきなり gun-gate で完走0%(探索の壁)だった。今回は
+    # 銃使用カリキュラム (hunt-gun1→boot→gun2→e1m-gun) を積んだ e1m-gun から入る。
+    # 設定は camp-hunt4 と同じ + gunKillGate=True + gunKillBonus 0.3 (控えめな即時信号)。
+    # 評価は camp-hunt4 と同じ E1M1固定/HP100 で完走率と銃使用を測る
+    "e1m-camp-hunt8": {
+        "env2": True, "mode": "campaign", "levels": [0, 0, 1, 2, 3, 3, 4],
+        "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.5, 1.0],
+        "killGate": [0.25, 0.4],
+        "killGateByLevel": {2: [0, 0], 3: [0, 0]},
+        "gunKillGate": True,        # ゲートは銃キルで開ける (ナイフは自衛)
+        "gunKillBonus": 0.3,        # 控えめな銃キル即時報酬 (habit 逆戻り防止)
+        "hpDamageScale": 1.5,
+        "startHp": [40, 100], "startArmor": [0, 60],
+        "startBullets": [20, 70], "startShells": [0, 25], "shotgunChance": 0.6,
+        "maxSteps": 12000,
+    },
     # 最終段階: 通し (HP・弾を持ち越し)。開始ステージを混ぜる逆カリキュラム (v1 と同じ)。
     # E1M1 スタートを高確率で残すのが肝 (これを外して v1 は 2.90 -> 2.52 に劣化した)。
     # 記憶は新しいステージごとに白紙。回復整形 (healSeek) の本領はここ
@@ -324,12 +342,12 @@ STAGES = {
 GAMMA = {"e1m-camp-mix": 0.999, "e1m-camp-mix2": 0.999, "e1m-camp-hunt": 0.999,
          "e1m-camp-hunt2": 0.999, "e1m-camp-hunt3": 0.999, "e1m-camp-hunt4": 0.999,
          "e1m-camp-hunt5": 0.999, "e1m-camp-hunt6": 0.999, "e1m-camp-hunt6b": 0.999,
-         "e1m-camp-hunt7": 0.999}
+         "e1m-camp-hunt7": 0.999, "e1m-camp-hunt8": 0.999}
 # 長いエピソードは GAE を安定させるため n_steps も伸ばす
 N_STEPS = {"e1m-camp-mix": 256, "e1m-camp-mix2": 256, "e1m-camp-hunt": 256,
            "e1m-camp-hunt2": 256, "e1m-camp-hunt3": 256, "e1m-camp-hunt4": 256,
            "e1m-camp-hunt5": 256, "e1m-camp-hunt6": 256, "e1m-camp-hunt6b": 256,
-           "e1m-camp-hunt7": 256}
+           "e1m-camp-hunt7": 256, "e1m-camp-hunt8": 256}
 
 
 class EntCoefAnneal(BaseCallback):
