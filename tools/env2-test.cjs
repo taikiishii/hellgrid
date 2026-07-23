@@ -560,5 +560,50 @@ console.log('\n[13] 戦闘スキル強化 (弾薬誘導・ストレイフ設定)
   ok(r2.reward < r3.reward - 0.3, `被弾ペナルティ2倍が効く (scale2 ${r2.reward.toFixed(2)} < scale1 ${r3.reward.toFixed(2)})`);
 }
 
+// ---- 14. 銃使用促進: ナイフの至近2倍除外 + 遠距離キル加点 ----
+console.log('\n[14] 銃使用促進 (ナイフ密着ボーナス除外・遠距離キル加点):');
+{
+  // 敵を固定位置に置いて武器と距離だけ変え、キル報酬を測る。prev を _snapshot で
+  // 敵が生存の状態に固定し、死体は動かない性質を使って距離を保つ
+  const killRew = (weapon, dist, seed = 7) => {
+    const env = new HellgridEnv2({ mazeSize: 13, mazeRooms: 3, mazeEnemies: [1, 1], maxSteps: 500 });
+    env.reset(seed);
+    const w = env.world, lv = w.level, p = w.player, e = lv.enemies[0];
+    e.hp = 60;
+    env._snapshot();          // prev.enemyHpArr[0] = 60 (生存)
+    p.weapon = weapon;
+    e.x = p.x + dist; e.y = p.y;
+    w.damageEnemy(e, 9999);   // 撃破 (死体は frameSkip で動かない)
+    return env.step([0, 0, 2, 1, 0, 0, 0]).reward;   // 移動/射撃なしの no-op
+  };
+  const kc = killRew('knife', 0.5), pc = killRew('pistol', 0.5);
+  const kf = killRew('knife', 5), pf = killRew('pistol', 5);
+  // ナイフは距離重みを受けない (至近2倍から除外) ので、至近も遠距離も同じキル報酬
+  ok(Math.abs(kc - kf) < 1e-6, `ナイフは距離で報酬が変わらない (至近 ${kc.toFixed(2)} = 遠 ${kf.toFixed(2)})`);
+  // 同じ至近距離では銃のキル報酬がナイフを上回る (密着ハックの是正)
+  ok(pc > kc + 1.0, `至近で銃 > ナイフ (ピストル ${pc.toFixed(2)} > ナイフ ${kc.toFixed(2)})`);
+  // 遠距離でも銃がナイフを上回る = 遠距離キル加点 (rangedKillBonus) が乗る
+  ok(pf > kf + 1.0, `遠距離で銃 > ナイフ (ピストル ${pf.toFixed(2)} > ナイフ ${kf.toFixed(2)})`);
+}
+
+// ---- 15. 回復ゲート閾値の cfg 上書き (消耗対策) ----
+console.log('\n[15] 回復ゲート閾値の上書き (healSeekBelow):');
+{
+  // healSeekBelow=80 なら HP70 で回復場が張られ、既定(60)では張られない
+  const mk = (below) => {
+    const cfg = { levels: [0], noEnemies: false, noItems: false, maxSteps: 300 };
+    if (below != null) cfg.healSeekBelow = below;
+    const env = new HellgridEnv2(cfg);
+    env.reset(3);
+    env.world.player.health = 70;   // 60 < 70 < 80
+    env._snapshot();
+    env.world.player.health = 70;
+    env.step([0, 0, 2, 1, 0, 0, 0]);
+    return env.healField;   // 張られていれば非 null
+  };
+  ok(mk(null) === null, 'HP70・既定閾値(60) では回復場が張られない');
+  ok(mk(80) !== null, 'HP70・閾値80 では回復場が張られる');
+}
+
 console.log(failures ? `\nNG ${failures}件の失敗` : '\nすべてOK');
 process.exitCode = failures ? 1 : 0;

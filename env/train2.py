@@ -177,6 +177,25 @@ STAGES = {
         "startBullets": [20, 70], "startShells": [0, 25], "shotgunChance": 0.6,
         "maxSteps": 12000,
     },
+    # v5: v4 (完走13%) の2つの診断への対策。
+    #  ① 消耗が支配的 (E1M4到達HP: 42=通過 vs 28=死亡、削れどころは E1M2/M3) →
+    #     healSeekBelow を 60→80 に上げ、早めに回復へ寄せて E1M2/M3 の消耗を防ぐ。
+    #     開始HPも実到達分布 [25,55] に寄せ、消耗した E1M4 を直接練習する。
+    #  ② ナイフ偏重 (ピストル0%/ショットガン7%/ナイフ55%) → env2.js 側で至近2倍から
+    #     ナイフを除外 + 遠距離キルに加点 (rangedKillBonus)。銃使用を誘導し、接触戦
+    #     による焔鬼被弾 (消耗源) を減らす。E1M4 スタートを 3/8 に厚くする
+    "e1m-camp-hunt5": {
+        "env2": True, "mode": "campaign", "levels": [0, 0, 1, 2, 3, 3, 3, 4],
+        "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.5, 1.0],
+        "killGate": [0.25, 0.4],
+        "killGateByLevel": {2: [0, 0], 3: [0, 0]},
+        "hpDamageScale": 1.5,
+        "healSeekBelow": 80,   # 消耗が支配的 -> 早めに回復へ寄せる (既定60)
+        "startHp": [25, 55], "startArmor": [0, 60],
+        "startBullets": [20, 70], "startShells": [0, 25], "shotgunChance": 0.6,
+        "maxSteps": 12000,
+    },
     # 最終段階: 通し (HP・弾を持ち越し)。開始ステージを混ぜる逆カリキュラム (v1 と同じ)。
     # E1M1 スタートを高確率で残すのが肝 (これを外して v1 は 2.90 -> 2.52 に劣化した)。
     # 記憶は新しいステージごとに白紙。回復整形 (healSeek) の本領はここ
@@ -204,10 +223,12 @@ STAGES = {
 # 割引率: 実効視野はおよそ 1/(1-gamma)。通しは「4ステージ先まで生き延びる価値」が
 # 見える長さが必要 (v1 教訓1: gamma=0.99 の campaign は目先だけ見て崩壊した)
 GAMMA = {"e1m-camp-mix": 0.999, "e1m-camp-mix2": 0.999, "e1m-camp-hunt": 0.999,
-         "e1m-camp-hunt2": 0.999, "e1m-camp-hunt3": 0.999, "e1m-camp-hunt4": 0.999}
+         "e1m-camp-hunt2": 0.999, "e1m-camp-hunt3": 0.999, "e1m-camp-hunt4": 0.999,
+         "e1m-camp-hunt5": 0.999}
 # 長いエピソードは GAE を安定させるため n_steps も伸ばす
 N_STEPS = {"e1m-camp-mix": 256, "e1m-camp-mix2": 256, "e1m-camp-hunt": 256,
-           "e1m-camp-hunt2": 256, "e1m-camp-hunt3": 256, "e1m-camp-hunt4": 256}
+           "e1m-camp-hunt2": 256, "e1m-camp-hunt3": 256, "e1m-camp-hunt4": 256,
+           "e1m-camp-hunt5": 256}
 
 
 class EntCoefAnneal(BaseCallback):

@@ -53,8 +53,16 @@
     // (引きつける間の被弾は -0.02/HP で課金されるので、2倍程度なら期待値で損になる)
     damageDealt: 0.01,
     kill: 1.0,
-    nearCombatMax: 2.0,   // 至近 (距離0) での倍率
+    nearCombatMax: 2.0,   // 至近 (距離0) での倍率 (銃のみ。ナイフは常に密着なので除外)
     nearCombatRange: 8,   // このタイル数以上は等倍
+    // 銃使用の促進: デモで「ピストル/ショットガンを一切使わずナイフのみ」で
+    // 戦う挙動が観察された (ピストル0% / ナイフ55%)。原因はナイフが弾コスト0 +
+    // 常に密着で nearCombatMax の2倍を総取り + 切替コスト無しだったこと。
+    // ナイフは接触が必要なので焔鬼への被弾も増え、消耗死を悪化させる。
+    // 対策: (a) 至近2倍からナイフを除外 (上記) (b) 一定距離以上のキルに加点する
+    // = 銃でしか届かない間合いでの撃破に価値を与え、銃の携行・使用を誘導する
+    rangedKillBonus: 0.6,   // 銃で rangedKillMin タイル以上から倒したキルへの上乗せ
+    rangedKillMin: 3,       // これ以上離れて倒すと「遠距離キル」とみなす (ナイフは届かない)
     // デモで観察された「でたらめな乱射と武器ガチャガチャ」対策。
     // 弾のコストが実質無料 (-0.002/発) だと、エントロピー由来の無駄撃ちが
     // 刈り取られない。「外した射撃だけ」を明確に損にすることで、
@@ -118,6 +126,9 @@
         mazeEnemies: null,     // 迷路に置く敵の数 [lo, hi] (例: [1, 3])
         mazeFireballRatio: null,  // 迷路の敵の火球持ち (焔鬼) 比率。高いとストレイフ要求
         hpDamageScale: 1,      // 被弾ペナルティの倍率 (回避を促す段階で >1 にする)
+        // 回復回収ゲートのHP閾値の上書き (既定 REWARD2.healSeekBelow=60)。消耗が
+        // 支配的なステージでは早めに (HP<80 で) 回復に寄せて、E1M2/M3 での削れを防ぐ
+        healSeekBelow: null,
       }, cfg);
       this.world = null;
       this.mazeIdx = -1;   // LEVELS 配列に生成迷路を差し込むスロット
@@ -279,10 +290,16 @@
         if (now >= before) continue;
         dmgDealt += before - now;
         const d = Math.hypot(e.x - p.x, e.y - p.y);
-        const wgt = 1 + (REWARD2.nearCombatMax - 1) * clamp(1 - d / REWARD2.nearCombatRange, 0, 1);
+        // 至近2倍は銃のみ。ナイフは常に密着 = 倍率を総取りしてしまうので等倍に固定
+        const isKnife = p.weapon === 'knife';
+        const wgt = isKnife
+          ? 1
+          : 1 + (REWARD2.nearCombatMax - 1) * clamp(1 - d / REWARD2.nearCombatRange, 0, 1);
         reward += (before - now) * REWARD2.damageDealt * wgt;
         if (now === 0) {
           let kw = wgt;
+          // 銃で一定距離以上から倒したキルに加点 (ナイフでは届かない間合い = 銃を誘導)
+          if (!isKnife && d >= REWARD2.rangedKillMin) kw += REWARD2.rangedKillBonus;
           // 進路を塞いでいた敵 (目標への既知マップ距離で自分より先) はさらに乗せる。
           // 場は前ステップ知識のもの (この時点ではまだ張り直していない) で判定する
           if (this.goal.field) {
@@ -354,7 +371,8 @@
       // ---- 回復への誘導 (HPが減っている間だけ、ナビ整形に上乗せ) ----
       // ゲートはステップの前後両方で開いているときだけ (またぎの一発報酬を防ぐ)。
       // 差分はフロンティア整形と同じく「前ステップ時点の知識の場」で取る
-      if (p.health < REWARD2.healSeekBelow && prev.hp < REWARD2.healSeekBelow) {
+      const healBelow = cfg.healSeekBelow != null ? cfg.healSeekBelow : REWARD2.healSeekBelow;
+      if (p.health < healBelow && prev.hp < healBelow) {
         if (!this.healField) {
           this.healField = computeHealField(w, this.mem);
           this.healRev = this.mem.itemRev;
