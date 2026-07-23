@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import pathlib
 import sys
+from collections import Counter
 
 import numpy as np
 from stable_baselines3 import PPO
@@ -102,6 +103,13 @@ def main() -> None:
 
     label = f"ablate={args.ablate}" if args.ablate else "観測そのまま"
     print(f"\n{n} エピソード / stage={args.stage} / {'決定的' if args.deterministic else '確率的'} / {label}")
+    # 通し完走 = 全5面クリア (levelsCleared>=5)。--levels 0 で E1M1 固定スタートにすると
+    # この値がそのまま「通し完走率」になる (逆カリキュラム混合スタートでは中途スタート
+    # ぶん過大評価になるので注意)。面数分布も出して、どの面で詰まるか見えるようにする
+    full = [r for r in results if r["levelsCleared"] >= 5]
+    dist = Counter(r["levelsCleared"] for r in results)
+    print(f"  通し完走率(5面) {len(full) / n:>6.1%}  ({len(full)}/{n})")
+    print(f"  面数分布       " + "  ".join(f"{k}面:{dist.get(k, 0)}" for k in range(0, 6)))
     print(f"  クリア率       {len(cleared) / n:>6.1%}  ({len(cleared)}/{n})")
     print(f"  出口発見率     {len(seen) / n:>6.1%}  ({len(seen)}/{n})")
     if seen:
