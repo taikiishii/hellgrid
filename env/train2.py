@@ -152,6 +152,20 @@ STAGES = {
         "gunKillBonus": 0.6,          # ゲートで銃を要求しつつ報酬は控えめに戻す
         "maxSteps": 1500,
     },
+    # 銃使用カリキュラム 第4段: 実ステージ単発で gun-gate を橋渡し (通しの前段)。
+    # killGate 系譜の e1m-hunt に相当。hunt-gun2 は単発迷路の方策なので、通しへ跳ぶ前に
+    # 実5面 (キー・ドア・実レイアウト) を単発で取り戻す。銃使用は gun-gate で保つ。
+    # E1M3/M4 (要キー三重課題) はゲート免除。迷路も25%混ぜて忘却を防ぐ
+    "e1m-gun": {
+        "env2": True, "levels": [0, 1, 2, 3, 4], "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.5, 1.0],
+        "gunKillGate": True, "killGate": [0.25, 0.5],
+        "killGateByLevel": {2: [0, 0], 3: [0, 0]},
+        "gunKillBonus": 0.4,
+        "mazeMix": 0.25, "mazeSize": 17, "mazeBraid": 0.15, "mazeRooms": 3,
+        "mazeEnemies": [2, 6],
+        "maxSteps": 2000,
+    },
     # 実ステージ版: ゲート割合と敵密度を混合し、迷路 (敵つき) も混ぜ続ける
     "e1m-hunt": {
         "env2": True, "levels": [0, 1, 2, 3, 4], "noEnemies": False, "noItems": False,
