@@ -228,6 +228,23 @@ STAGES = {
         "startBullets": [20, 70], "startShells": [0, 25], "shotgunChance": 0.6,
         "maxSteps": 12000,
     },
+    # v7: ナイフ弱体化軸は甘い点なしと判明 (0.55=両損, 0.35=完走半減)。ナイフ弱体化は
+    # 「戦闘力の一律弱化」で killGate 進行と衝突するのが原因。そこで **戦闘力を削らずに
+    # 銃を要求する gun-kill-gate**: killGate を銃(hitscan)キルのみで計上する。ナイフは
+    # 自衛に使えるが、出口を開けるには規定数の銃キルが要る。ナイフ威力は素のまま(1.0)。
+    # camp-hunt4 の設定に gunKillGate=True だけ足した単一変数実験。camp-hunt4 warm-start
+    "e1m-camp-hunt7": {
+        "env2": True, "mode": "campaign", "levels": [0, 0, 1, 2, 3, 3, 4],
+        "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.5, 1.0],
+        "killGate": [0.25, 0.4],
+        "killGateByLevel": {2: [0, 0], 3: [0, 0]},
+        "gunKillGate": True,        # 出口を開けるゲートは銃キルのみで進行 (ナイフは自衛用)
+        "hpDamageScale": 1.5,
+        "startHp": [40, 100], "startArmor": [0, 60],
+        "startBullets": [20, 70], "startShells": [0, 25], "shotgunChance": 0.6,
+        "maxSteps": 12000,
+    },
     # 最終段階: 通し (HP・弾を持ち越し)。開始ステージを混ぜる逆カリキュラム (v1 と同じ)。
     # E1M1 スタートを高確率で残すのが肝 (これを外して v1 は 2.90 -> 2.52 に劣化した)。
     # 記憶は新しいステージごとに白紙。回復整形 (healSeek) の本領はここ
@@ -256,11 +273,13 @@ STAGES = {
 # 見える長さが必要 (v1 教訓1: gamma=0.99 の campaign は目先だけ見て崩壊した)
 GAMMA = {"e1m-camp-mix": 0.999, "e1m-camp-mix2": 0.999, "e1m-camp-hunt": 0.999,
          "e1m-camp-hunt2": 0.999, "e1m-camp-hunt3": 0.999, "e1m-camp-hunt4": 0.999,
-         "e1m-camp-hunt5": 0.999, "e1m-camp-hunt6": 0.999, "e1m-camp-hunt6b": 0.999}
+         "e1m-camp-hunt5": 0.999, "e1m-camp-hunt6": 0.999, "e1m-camp-hunt6b": 0.999,
+         "e1m-camp-hunt7": 0.999}
 # 長いエピソードは GAE を安定させるため n_steps も伸ばす
 N_STEPS = {"e1m-camp-mix": 256, "e1m-camp-mix2": 256, "e1m-camp-hunt": 256,
            "e1m-camp-hunt2": 256, "e1m-camp-hunt3": 256, "e1m-camp-hunt4": 256,
-           "e1m-camp-hunt5": 256, "e1m-camp-hunt6": 256, "e1m-camp-hunt6b": 256}
+           "e1m-camp-hunt5": 256, "e1m-camp-hunt6": 256, "e1m-camp-hunt6b": 256,
+           "e1m-camp-hunt7": 256}
 
 
 class EntCoefAnneal(BaseCallback):

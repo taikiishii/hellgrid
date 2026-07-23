@@ -265,7 +265,7 @@
   function computeKnownGoal(world, mem) {
     const level = world.level, keys = world.player.keys;
     const pi = (world.player.y | 0) * level.w + (world.player.x | 0);
-    const gateClosed = level.killGate && level.kills < level.killGate;
+    const gateClosed = level.killGate && (world.gunKillGate ? level.gunKills : level.kills) < level.killGate;
     if (mem.exits.length && !gateClosed) {
       const seeds = [];
       for (const [x, y] of mem.exits) seeds.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
@@ -393,7 +393,7 @@
       o[b + 0] = hit.dist / MAX_D;
       o[b + 1] = hit.ch === 'D' ? 1 : 0;
       // 「まだ開かないもの」チャネル: キー未所持の施錠ドア + キルゲート中の出口
-      const gated = level.killGate && level.kills < level.killGate;
+      const gated = level.killGate && (world.gunKillGate ? level.gunKills : level.kills) < level.killGate;
       o[b + 2] = (hit.ch === 'R' && !p.keys.red) || (hit.ch === 'B' && !p.keys.blue) ||
                  (hit.ch === 'X' && gated) ? 1 : 0;
       o[b + 3] = hit.ch === 'X' ? 1 : 0;
@@ -500,7 +500,7 @@
           o[c + 1 * plane] = 1;                       // '#' '&' '=' '*' は壁 ('*' は秘密のまま)
           // 出口は壁 + 出口チャネル。キルゲート中は 0.5 (施錠ドアの表現と同じ流儀)
           if (ch === 'X') {
-            o[c + 8 * plane] = level.killGate && level.kills < level.killGate ? 0.5 : 1;
+            o[c + 8 * plane] = level.killGate && (world.gunKillGate ? level.gunKills : level.kills) < level.killGate ? 0.5 : 1;
           }
         }
         const et = mem.enemyT[ti];

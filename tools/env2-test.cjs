@@ -627,5 +627,55 @@ console.log('\n[16] ナイフ弱体化 (knifeDamageScale):');
   ok(d035 > 0 && d035 < d1 * 0.5, `scale0.35 でダメージが大きく減る (${d035.toFixed(1)} < ${(d1 * 0.5).toFixed(1)})`);
 }
 
+// ---- 17. 銃キルゲート (gunKillGate): 銃キルのみが出口を開ける ----
+console.log('\n[17] 銃キルゲート (gunKillGate):');
+{
+  const setup = (gunGate) => {
+    const env = new HellgridEnv2({
+      mazeSize: 13, mazeBraid: 0.15, mazeRooms: 2, mazeEnemies: [3, 3],
+      killGate: [1.0, 1.0], gunKillGate: gunGate, maxSteps: 500,
+    });
+    env.reset(9);
+    return env;
+  };
+  const goExit = (env) => {
+    const w = env.world, lv = w.level;
+    let ex = -1, ey = -1;
+    for (let y = 0; y < lv.h; y++) for (let x = 0; x < lv.w; x++) if (lv.grid[y][x] === 'X') { ex = x; ey = y; }
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const ax = ex + dx, ay = ey + dy;
+      if (ax < 0 || ay < 0 || ax >= lv.w || ay >= lv.h || lv.grid[ay][ax] !== null) continue;
+      w.player.x = ax + 0.5; w.player.y = ay + 0.5; w.player.z = lv.heights[ay][ax];
+      w.player.dirX = ex - ax; w.player.dirY = ey - ay;
+      w.player.planeX = -w.player.dirY * 0.66; w.player.planeY = w.player.dirX * 0.66;
+    }
+  };
+  // (a) gunKillGate ON + ナイフ全滅 → gunKills=0 なので出口は開かない
+  const ea = setup(true);
+  const wa = ea.world, la = wa.level;
+  ok(la.killGate === 3 && wa.gunKillGate === true, `銃ゲート有効・ゲート3 (${la.killGate})`);
+  for (const e of la.enemies) { wa._dmgIsGun = false; wa.damageEnemy(e, 9999); }
+  ok(la.kills === 3 && la.gunKills === 0, `ナイフ3キルで kills=3・gunKills=0`);
+  goExit(ea);
+  let r = ea.step([0, 0, 3, 1, 0, 1, 0]);
+  ok(!r.terminated, `銃ゲート中はナイフ全滅でも出口が開かない`);
+  // (b) gunKillGate ON + 銃キル → gunKills 進行・出口が開く
+  const eb = setup(true);
+  const wb = eb.world, lb = wb.level;
+  for (const e of lb.enemies) { wb._dmgIsGun = true; wb.damageEnemy(e, 9999); }
+  ok(lb.gunKills === 3, `銃3キルで gunKills=3`);
+  goExit(eb);
+  r = eb.step([0, 0, 3, 1, 0, 1, 0]);
+  ok(r.terminated && r.info.levelsCleared === 1, `銃キルで出口が開く (報酬 ${r.reward.toFixed(1)})`);
+  // (c) デフォルト (gunKillGate off) はナイフキルで従来どおり開く (退行なし)
+  const ec = setup(false);
+  const wc = ec.world, lc = wc.level;
+  ok(!wc.gunKillGate, `デフォルトは銃ゲート無効`);
+  for (const e of lc.enemies) { wc._dmgIsGun = false; wc.damageEnemy(e, 9999); }
+  goExit(ec);
+  r = ec.step([0, 0, 3, 1, 0, 1, 0]);
+  ok(r.terminated && r.info.levelsCleared === 1, `デフォルトはナイフキルで出口が開く (従来不変)`);
+}
+
 console.log(failures ? `\nNG ${failures}件の失敗` : '\nすべてOK');
 process.exitCode = failures ? 1 : 0;

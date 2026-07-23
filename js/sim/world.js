@@ -213,6 +213,7 @@ class World {
       projectiles: [], puffs: [],
       startX, startY,
       totalKills: enemies.length, kills: 0,
+      gunKills: 0,   // 銃(hitscan)で倒した数。gunKillGate 時のゲート進行に使う
       totalItems: items.length, itemsGot: 0,
       totalSecrets, secretsFound: 0,
       time: 0,
@@ -513,6 +514,7 @@ class World {
   }
 
   hitscan(x, y, z, dx, dy, slope, damage) {
+    this._dmgIsGun = true;   // このダメージ源は銃 (gunKillGate 用のキル種別タグ)
     const level = this.level;
     const wallDist = this.castRay3D(x, y, z, dx, dy, slope);
     // 射線に最も近い敵を探す
@@ -573,6 +575,7 @@ class World {
 
   // 爆風: 半径内の敵・プレイヤー・他の樽(連鎖)にダメージ
   explosionDamage(x, y, z, source) {
+    this._dmgIsGun = false;   // 爆風は銃キルに数えない
     const level = this.level, player = this.player;
     const R = EXPLOSION_RADIUS;
     for (const e of level.enemies) {
@@ -590,6 +593,7 @@ class World {
 
   // 近接攻撃(ナイフ): 正面のごく近い敵のみに当たる。距離が離れていると無効。
   meleeAttack(w) {
+    this._dmgIsGun = false;   // ナイフは銃キルに数えない
     const level = this.level, player = this.player;
     const dx = player.dirX, dy = player.dirY;
     const slope = player.pitch / VIEW_H;
@@ -658,9 +662,11 @@ class World {
       }
       if (ch === 'X') {
         // キルゲート (任意ルール): 規定数の敵を倒すまで出口スイッチは作動しない。
-        // level.killGate が未設定 (通常のゲーム) なら従来どおり即クリア
-        if (level.killGate && level.kills < level.killGate) {
-          this.emit('message', `出口は封鎖されている (あと${level.killGate - level.kills}体)`);
+        // level.killGate が未設定 (通常のゲーム) なら従来どおり即クリア。
+        // gunKillGate 時は銃キル(gunKills)のみが進行に数える (ナイフでは開かない)
+        const gateProg = this.gunKillGate ? level.gunKills : level.kills;
+        if (level.killGate && gateProg < level.killGate) {
+          this.emit('message', `出口は封鎖されている (あと${level.killGate - gateProg}体)`);
           this.emit('sound', 'denied');
           return;
         }
@@ -719,6 +725,7 @@ class World {
     if (e.hp <= 0) {
       this.setEnemyState(e, 'dead');
       this.level.kills++;
+      if (this._dmgIsGun) this.level.gunKills++;   // 銃キルのみ別集計 (gunKillGate 用)
       this.emit('sound', 'enemyDie');
       const T = ENEMY_TYPES[e.type];
       if (T.drops) this.level.items.push({ kind: T.drops, x: e.x, y: e.y, z: e.z, dropped: true });

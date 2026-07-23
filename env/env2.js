@@ -132,6 +132,10 @@
         // ナイフのダメージ倍率。<1 でナイフを弱め、銃使用を強制する環境ルール
         // (報酬による銃促進は失敗 = 頑健な行動の谷は環境ルールでしか動かない)
         knifeDamageScale: 1,
+        // 銃キルゲート: true でキルゲートを「銃(hitscan)キルのみ」で計上する。
+        // ナイフは自衛に使えるが出口を開けるには銃キルが要る = 戦闘力を削らずに銃を
+        // 要求する (ナイフ弱体化と違い完走を犠牲にしない狙い)
+        gunKillGate: false,
       }, cfg);
       this.world = null;
       this.mazeIdx = -1;   // LEVELS 配列に生成迷路を差し込むスロット
@@ -161,6 +165,8 @@
       else this.world.reset(idx, this.episodeSeed);
       // ナイフ弱体化 (銃使用を強制する環境ルール)。既定1で挙動は不変
       this.world.knifeDamageScale = this.cfg.knifeDamageScale;
+      // 銃キルゲート。エピソード内の全ステージに効かせる (world 上に持たせる)
+      this.world.gunKillGate = this.cfg.gunKillGate;
       this.world.drainEvents();
 
       this._applyLevelFilters(rng0);
@@ -235,7 +241,7 @@
       this.exitCount = this.mem.exits.length;
       this.keyCount = this.mem.keyTiles.length;
       const lv0 = this.world.level;
-      this.gateClosed = !!(lv0.killGate && lv0.kills < lv0.killGate);
+      this.gateClosed = !!(lv0.killGate && (this.cfg.gunKillGate ? lv0.gunKills : lv0.kills) < lv0.killGate);
       const p = this.world.player;
       this.prevTileX = p.x | 0;
       this.prevTileY = p.y | 0;
@@ -357,7 +363,7 @@
       // 取るので、場の更新による距離の飛びが報酬に化けることはない。
       // キルゲートの開閉が変わったら目標場を張り直す (閉→出口は目標にならず探索、
       // 開→出口への整形が復活する。obs2 の computeKnownGoal がゲートを見ている)
-      const gateClosed = !!(lv.killGate && lv.kills < lv.killGate);
+      const gateClosed = !!(lv.killGate && (cfg.gunKillGate ? lv.gunKills : lv.kills) < lv.killGate);
       if (newTiles > 0 || gotKey || gateClosed !== this.gateClosed ||
           this.mem.exits.length !== this.exitCount || this.mem.keyTiles.length !== this.keyCount) {
         this.goal = computeKnownGoal(w, this.mem);
@@ -468,7 +474,7 @@
           coverage: this.mem.totalFloor ? this.mem.knownFloor / this.mem.totalFloor : 1,
           exitSeen: this.exitSeen ? 1 : 0,
           goalDist: knownGoalDistAt(this.goal, lv, p.x, p.y),
-          kills: lv.kills, totalKills: lv.totalKills,
+          kills: lv.kills, totalKills: lv.totalKills, gunKills: lv.gunKills,
           itemsGot: lv.itemsGot, totalItems: lv.totalItems,
           weaponSteps: this.weaponSteps,   // 装備滞在ステップ (銃使用促進の検証用)
           fireSteps: this.fireSteps,       // うち射撃していたステップ
