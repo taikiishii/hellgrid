@@ -313,6 +313,23 @@ STAGES = {
         "startBullets": [20, 70], "startShells": [0, 25], "shotgunChance": 0.6,
         "maxSteps": 12000,
     },
+    # camp-hunt9: camp-hunt8-80M (銃48%達成・完走17〜25%) の完走を回収する。
+    # gun-kill-gate の銃キル必須が弾消耗を招き E1M2 等で詰まるのが完走の頭打ち要因。
+    # ゲートの必要銃キル数を減らし(0.25→0.15)、弾供給を増やして消耗を緩める。
+    # 銃使用は gun-gate で維持しつつ完走を camp-hunt4 に近づける狙い。80M からwarm-start
+    "e1m-camp-hunt9": {
+        "env2": True, "mode": "campaign", "levels": [0, 0, 1, 2, 3, 3, 4],
+        "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.5, 1.0],
+        "killGate": [0.15, 0.25],   # 必要銃キル数を軽く (弾消耗を緩める)
+        "killGateByLevel": {2: [0, 0], 3: [0, 0]},
+        "gunKillGate": True,
+        "gunKillBonus": 0.3,
+        "hpDamageScale": 1.5,
+        "startHp": [40, 100], "startArmor": [0, 60],
+        "startBullets": [40, 100], "startShells": [15, 40], "shotgunChance": 0.7,  # 弾増
+        "maxSteps": 12000,
+    },
     # 最終段階: 通し (HP・弾を持ち越し)。開始ステージを混ぜる逆カリキュラム (v1 と同じ)。
     # E1M1 スタートを高確率で残すのが肝 (これを外して v1 は 2.90 -> 2.52 に劣化した)。
     # 記憶は新しいステージごとに白紙。回復整形 (healSeek) の本領はここ
@@ -342,12 +359,12 @@ STAGES = {
 GAMMA = {"e1m-camp-mix": 0.999, "e1m-camp-mix2": 0.999, "e1m-camp-hunt": 0.999,
          "e1m-camp-hunt2": 0.999, "e1m-camp-hunt3": 0.999, "e1m-camp-hunt4": 0.999,
          "e1m-camp-hunt5": 0.999, "e1m-camp-hunt6": 0.999, "e1m-camp-hunt6b": 0.999,
-         "e1m-camp-hunt7": 0.999, "e1m-camp-hunt8": 0.999}
+         "e1m-camp-hunt7": 0.999, "e1m-camp-hunt8": 0.999, "e1m-camp-hunt9": 0.999}
 # 長いエピソードは GAE を安定させるため n_steps も伸ばす
 N_STEPS = {"e1m-camp-mix": 256, "e1m-camp-mix2": 256, "e1m-camp-hunt": 256,
            "e1m-camp-hunt2": 256, "e1m-camp-hunt3": 256, "e1m-camp-hunt4": 256,
            "e1m-camp-hunt5": 256, "e1m-camp-hunt6": 256, "e1m-camp-hunt6b": 256,
-           "e1m-camp-hunt7": 256, "e1m-camp-hunt8": 256}
+           "e1m-camp-hunt7": 256, "e1m-camp-hunt8": 256, "e1m-camp-hunt9": 256}
 
 
 class EntCoefAnneal(BaseCallback):
