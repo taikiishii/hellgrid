@@ -605,5 +605,27 @@ console.log('\n[15] 回復ゲート閾値の上書き (healSeekBelow):');
   ok(mk(80) !== null, 'HP70・閾値80 では回復場が張られる');
 }
 
+// ---- 16. ナイフ弱体化 (knifeDamageScale) ----
+console.log('\n[16] ナイフ弱体化 (knifeDamageScale):');
+{
+  // プレイヤーの正面にダミー敵を置き、ナイフ一振りのダメージを scale 別に測る。
+  // 同一シード + 同一セットアップなので damage の RNG ロールも一致し、比は scale に等しい
+  const knifeHit = (scale) => {
+    const env = new HellgridEnv2({ mazeSize: 13, mazeRooms: 3, mazeEnemies: [1, 1], knifeDamageScale: scale, maxSteps: 100 });
+    env.reset(5);
+    const w = env.world, p = w.player, e = w.level.enemies[0];
+    p.pitch = 0;
+    e.x = p.x + p.dirX * 1.0; e.y = p.y + p.dirY * 1.0; e.z = p.z;
+    e.state = 'idle'; e.dormant = false; e.hp = 1000;
+    p.weapon = 'knife'; p.shootCd = 0;
+    const before = e.hp;
+    w.tryShoot();
+    return before - e.hp;
+  };
+  const d1 = knifeHit(1), d035 = knifeHit(0.35);
+  ok(d1 > 0, `既定(1)でナイフが命中してダメージ (${d1.toFixed(1)})`);
+  ok(d035 > 0 && d035 < d1 * 0.5, `scale0.35 でダメージが大きく減る (${d035.toFixed(1)} < ${(d1 * 0.5).toFixed(1)})`);
+}
+
 console.log(failures ? `\nNG ${failures}件の失敗` : '\nすべてOK');
 process.exitCode = failures ? 1 : 0;

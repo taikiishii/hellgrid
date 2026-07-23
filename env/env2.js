@@ -129,6 +129,9 @@
         // 回復回収ゲートのHP閾値の上書き (既定 REWARD2.healSeekBelow=60)。消耗が
         // 支配的なステージでは早めに (HP<80 で) 回復に寄せて、E1M2/M3 での削れを防ぐ
         healSeekBelow: null,
+        // ナイフのダメージ倍率。<1 でナイフを弱め、銃使用を強制する環境ルール
+        // (報酬による銃促進は失敗 = 頑健な行動の谷は環境ルールでしか動かない)
+        knifeDamageScale: 1,
       }, cfg);
       this.world = null;
       this.mazeIdx = -1;   // LEVELS 配列に生成迷路を差し込むスロット
@@ -156,6 +159,8 @@
       }
       if (!this.world) this.world = new World({ seed: this.episodeSeed, level: idx });
       else this.world.reset(idx, this.episodeSeed);
+      // ナイフ弱体化 (銃使用を強制する環境ルール)。既定1で挙動は不変
+      this.world.knifeDamageScale = this.cfg.knifeDamageScale;
       this.world.drainEvents();
 
       this._applyLevelFilters(rng0);

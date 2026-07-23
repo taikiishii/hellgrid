@@ -615,13 +615,16 @@ class World {
       if (Math.abs(relX * dy - relY * dx) > w.halfWidth) continue;
       if (along < barrelDist) { barrel = b; barrelDist = along; }
     }
+    // 近接ダメージの倍率 (学習カリキュラム用。既定1でブラウザの挙動は不変)。
+    // ナイフを弱めて銃使用を強制する環境ルール (env2 の knifeDamageScale) に使う
+    const mScale = this.knifeDamageScale || 1;
     if (best && (!barrel || bestDist <= barrelDist)) {
-      this.damageEnemy(best, w.damage[0] + this.rng() * (w.damage[1] - w.damage[0]));
+      this.damageEnemy(best, (w.damage[0] + this.rng() * (w.damage[1] - w.damage[0])) * mScale);
       this.spawnPuff(best.x, best.y, 'blood', best.z + 0.5);
       this.emit('sound', 'knifeHit');
     } else if (barrel) {
       this.emit('sound', 'knifeHit');
-      this.damageBarrel(barrel, w.damage[0] + this.rng() * (w.damage[1] - w.damage[0]));
+      this.damageBarrel(barrel, (w.damage[0] + this.rng() * (w.damage[1] - w.damage[0])) * mScale);
     }
   }
 
