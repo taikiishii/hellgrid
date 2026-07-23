@@ -165,6 +165,10 @@
       this.epReward = 0;
       this.levelsCleared = 0;
       this.hpTrail = [this.world.player.health];   // 各ステージ突入時のHP (診断用)
+      // 武器使用の集計 (銃使用促進の検証用)。info は終了時しか届かないので
+      // エピソード内で装備武器の滞在ステップと射撃ステップを積算しておく
+      this.weaponSteps = { pistol: 0, shotgun: 0, knife: 0 };
+      this.fireSteps = { pistol: 0, shotgun: 0, knife: 0 };
       this._initMemory();
       this._snapshot();
       this.doorsOpen = this._countOpenDoors();
@@ -273,6 +277,12 @@
       }
       w.drainEvents();
       this.steps++;
+
+      // 武器使用の積算 (装備滞在ステップと、射撃していたステップ)
+      if (this.weaponSteps[p.weapon] !== undefined) {
+        this.weaponSteps[p.weapon]++;
+        if (w.shootHeld) this.fireSteps[p.weapon]++;
+      }
 
       // ---- 記憶を更新 (このステップで視界に入れたものを覚える) ----
       const newTiles = this.mem.update(w, this.steps);
@@ -455,6 +465,8 @@
           goalDist: knownGoalDistAt(this.goal, lv, p.x, p.y),
           kills: lv.kills, totalKills: lv.totalKills,
           itemsGot: lv.itemsGot, totalItems: lv.totalItems,
+          weaponSteps: this.weaponSteps,   // 装備滞在ステップ (銃使用促進の検証用)
+          fireSteps: this.fireSteps,       // うち射撃していたステップ
           hp: p.health,
           hpTrail: this.hpTrail,
           levelsCleared: this.levelsCleared,

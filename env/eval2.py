@@ -52,6 +52,11 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=10_000, help="学習と重ならないシード帯で評価する")
     ap.add_argument("--ablate", choices=list(ABLATIONS), default=None,
                     help="観測の一部をゼロ埋めして依存度を測る")
+    ap.add_argument("--start-hp", type=float, default=None,
+                    help="開始HPを固定 (例 100 = 満タンの現実的な通し評価)")
+    ap.add_argument("--start-bullets", type=int, default=None)
+    ap.add_argument("--start-shells", type=int, default=None)
+    ap.add_argument("--start-armor", type=float, default=None)
     ap.add_argument("--levels", type=int, nargs="+", default=None,
                     help="ステージ設定の levels を上書きしてステージ別に測る (迷路は混ぜない)")
     ap.add_argument("--algo", choices=["ppo", "rppo"], default="ppo")
@@ -61,6 +66,15 @@ def main() -> None:
     if args.levels is not None:
         cfg["levels"] = args.levels
         cfg["mazeMix"] = 0
+    # 開始状態の固定 (満タンからの現実的な通し評価など)。[v, v] で一点固定にする
+    if args.start_hp is not None:
+        cfg["startHp"] = [args.start_hp, args.start_hp]
+    if args.start_bullets is not None:
+        cfg["startBullets"] = [args.start_bullets, args.start_bullets]
+    if args.start_shells is not None:
+        cfg["startShells"] = [args.start_shells, args.start_shells]
+    if args.start_armor is not None:
+        cfg["startArmor"] = [args.start_armor, args.start_armor]
     venv = HellgridVecEnv(
         num_envs=args.envs, n_workers=args.workers, cfg=cfg, base_seed=args.seed
     )
@@ -96,6 +110,15 @@ def main() -> None:
                 results.append(infos[i])
     venv.close()
 
+    # 武器使用: エピソード終了時の info に積算カウンタ (weaponSteps/fireSteps) が入る
+    weapon_all: Counter = Counter()    # 装備滞在ステップ
+    weapon_fire: Counter = Counter()   # うち射撃していたステップ
+    for r in results:
+        for k, v in (r.get("weaponSteps") or {}).items():
+            weapon_all[k] += v
+        for k, v in (r.get("fireSteps") or {}).items():
+            weapon_fire[k] += v
+
     n = len(results)
     cleared = [r for r in results if r["levelsCleared"] > 0]
     seen = [r for r in results if r.get("exitSeen")]
@@ -110,6 +133,12 @@ def main() -> None:
     dist = Counter(r["levelsCleared"] for r in results)
     print(f"  通し完走率(5面) {len(full) / n:>6.1%}  ({len(full)}/{n})")
     print(f"  面数分布       " + "  ".join(f"{k}面:{dist.get(k, 0)}" for k in range(0, 6)))
+    tot_f = sum(weapon_fire.values()) or 1
+    tot_a = sum(weapon_all.values()) or 1
+    order = ["pistol", "shotgun", "knife"]
+    print(f"  射撃時の武器   " + "  ".join(f"{k}:{weapon_fire.get(k, 0) / tot_f:>4.0%}" for k in order)
+          + f"  (射撃 {sum(weapon_fire.values())}步)")
+    print(f"  装備時間の武器 " + "  ".join(f"{k}:{weapon_all.get(k, 0) / tot_a:>4.0%}" for k in order))
     print(f"  クリア率       {len(cleared) / n:>6.1%}  ({len(cleared)}/{n})")
     print(f"  出口発見率     {len(seen) / n:>6.1%}  ({len(seen)}/{n})")
     if seen:
