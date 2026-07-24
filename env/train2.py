@@ -128,6 +128,21 @@ STAGES = {
         "mazeItems": {"heal": [0, 3], "ammo": [1, 3], "armor": [0, 2]},
         "maxSteps": 2000,
     },
+    # 汎化 第2段: gen-nav1 は未知生成ステージで3倍改善したが、生成分布が狭く(小さい・
+    # 特徴少ない)実5面を壊滅的に忘却した(4.7%)。対策2本を入れる:
+    #  (a) サイズを [11,27] に広げ実面サイズを包含、(b) 実5面を 35% 混ぜて忘却を防ぐ
+    #     (横断教訓7)。生成・実の両方に強い1モデルを狙う。cs2 (実面92%) から warm-start。
+    "gen-nav2": {
+        "env2": True,
+        "levels": [0, 1, 2, 3, 4], "mazeMix": 0.65,   # 65%生成 / 35%実5面 (忘却防止)
+        "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.4, 1.0],
+        "mazeSize": [11, 27], "mazeBraid": 0.12, "mazeRooms": 3,
+        "mazeEnemies": [0, 4], "mazeFireballRatio": 0.2,
+        "mazeKeyDepth": [0, 2],
+        "mazeItems": {"heal": [0, 3], "ammo": [1, 3], "armor": [0, 2]},
+        "maxSteps": 2500,
+    },
     # 銃使用カリキュラム 第1段: 「銃キルで出口が開く」を易しい単発で学ばせる。
     # camp-hunt7 (gun-kill-gate を通しにいきなり) は、ナイフ専門家 warm-start では
     # 銃を使う前にナイフで倒し gunKills=0 で詰んだ。キルゲートで戦闘を得た時と同じく
