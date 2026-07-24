@@ -203,6 +203,30 @@ STAGES = {
         "hpDamageScale": 1.5,
         "maxSteps": 2000,
     },
+    # 汎化 Phase 3 第3段: gen-hunt2 で戦闘汎化は成立 (クリア54.3% = baseline 1.7倍) したが、
+    # 銃使用は13%で「維持」止まり。方策は未知レイアウトでは確実なナイフに寄り、ゲートが
+    # 要求する最低限しか銃を使わない。そこで:
+    #  (a) 外していた難度を戻す (サイズ拡大・鍵1段・水路・上位敵) = 汎化の本番
+    #  (b) **ゲート要求を上げる** killGate 0.2-0.35 → 0.3-0.5。武器選択を動かす確実なレバーは
+    #      報酬でなく環境ルール (camp-hunt5/6 で実証済み)。gunKillBonus は 0.8 のまま
+    #  (c) 弾切れで詰まないよう弾を厚く撒く (camp-hunt8 の弾消耗の教訓)
+    "gen-hunt3": {
+        "env2": True,
+        "levels": [0, 1, 2, 3, 4], "mazeMix": 0.75,
+        "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.4, 1.0],
+        "mazeSize": [11, 25], "mazeBraid": 0.12, "mazeRooms": 3,
+        "mazeEnemies": [2, 6], "mazeFireballRatio": 0.25, "mazeEnemyElite": 0.2,
+        "mazeKeyDepth": [0, 1],       # 鍵を1段だけ戻す (2段は最終段で)
+        "mazeItems": {"heal": [1, 4], "ammo": [4, 7], "armor": [0, 2]},   # 弾を厚く
+        "mazeDoors": [0, 3], "mazeWater": [0, 3],
+        "mazeWallMix": 0.4, "mazeTheme": True,
+        "gunKillGate": True, "killGate": [0.3, 0.5],   # 銃キル要求を上げる (武器選択のレバー)
+        "killGateByLevel": {2: [0, 0], 3: [0, 0]},
+        "gunKillBonus": 0.8,
+        "hpDamageScale": 1.5,
+        "maxSteps": 2500,
+    },
     # 銃使用カリキュラム 第1段: 「銃キルで出口が開く」を易しい単発で学ばせる。
     # camp-hunt7 (gun-kill-gate を通しにいきなり) は、ナイフ専門家 warm-start では
     # 銃を使う前にナイフで倒し gunKills=0 で詰んだ。キルゲートで戦闘を得た時と同じく
