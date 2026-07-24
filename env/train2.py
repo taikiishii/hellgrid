@@ -158,6 +158,27 @@ STAGES = {
         "mazeDoors": [0, 3], "mazeWater": [0, 4], "mazeWallMix": 0.4, "mazeTheme": True,
         "maxSteps": 2500,
     },
+    # 汎化 Phase 3: 戦闘の汎化。「銃で戦うハンター」を未知ステージでも通用させる。
+    # 方向が重要: gen-nav3 (汎化はあるが銃を使わない) に gun-gate を足すのは camp-hunt7 で
+    # 実証済みの「探索の壁」で詰む。逆に **銃で戦える camp-hunt9 から** 生成ステージへ
+    # 広げる。gun-kill-gate + gunKillBonus で銃使用を維持しつつ、豊かな生成70%＋実5面30%で
+    # 汎化させる。弾は多めに撒く (銃戦闘は弾を食う)。ゲートは軽め (camp-hunt9 の知見)。
+    "gen-hunt1": {
+        "env2": True,
+        "levels": [0, 1, 2, 3, 4], "mazeMix": 0.7,   # 70%生成 / 30%実 (忘却防止)
+        "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.4, 1.0],
+        "mazeSize": [11, 25], "mazeBraid": 0.12, "mazeRooms": 3,
+        "mazeEnemies": [2, 6], "mazeFireballRatio": 0.25, "mazeEnemyElite": 0.25,
+        "mazeKeyDepth": [0, 2],
+        "mazeItems": {"heal": [1, 4], "ammo": [2, 5], "armor": [0, 2]},
+        "mazeDoors": [0, 3], "mazeWater": [0, 3], "mazeWallMix": 0.4, "mazeTheme": True,
+        "gunKillGate": True, "killGate": [0.15, 0.3],
+        "killGateByLevel": {2: [0, 0], 3: [0, 0]},   # 実面 E1M3/M4 (要キー) は免除
+        "gunKillBonus": 0.3,
+        "hpDamageScale": 1.5,
+        "maxSteps": 2500,
+    },
     # 銃使用カリキュラム 第1段: 「銃キルで出口が開く」を易しい単発で学ばせる。
     # camp-hunt7 (gun-kill-gate を通しにいきなり) は、ナイフ専門家 warm-start では
     # 銃を使う前にナイフで倒し gunKills=0 で詰んだ。キルゲートで戦闘を得た時と同じく
