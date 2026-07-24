@@ -71,9 +71,23 @@ function startGame() {
   else curWorld.reset(level, seed);
   // 狩りモード: 敵を全滅させるまで出口が作動しない (ハンターの訓練条件)
   if (mode.kind === 'hunt') curWorld.level.killGate = curWorld.level.totalKills;
+  applyHunterGate();
   curWorld.drainEvents();
   ai = new AIDriver2(curWorld, currentPolicy());
   showModeMessage();
+}
+
+// ハンター選択時は campaign/single で「銃キルで出口が開く」ゲートを張り、銃で戦う訓練
+// 条件を再現する (E1M3/M4=要キーは免除)。ゲートがあると走り抜けずに敵を銃で倒すので、
+// デモが「銃で戦う」姿になる。他方策・迷路/狩りモードは従来どおり
+function applyHunterGate() {
+  const lv = curWorld.level;
+  const gated = policyName === 'hunter' && (mode.kind === 'campaign' || mode.kind === 'single');
+  curWorld.gunKillGate = gated;
+  if (mode.kind === 'campaign' || mode.kind === 'single') {
+    lv.killGate = (gated && lv.totalKills > 0 && lv.index !== 2 && lv.index !== 3)
+      ? Math.max(1, Math.ceil(0.25 * lv.totalKills)) : 0;
+  }
 }
 
 function showModeMessage() {
@@ -92,6 +106,7 @@ function aiAutoAdvance(dt) {
   ai.endT = 0;
   if (mode.kind === 'campaign' && curWorld.state === 'levelEnd' && curWorld.level.index < 4) {
     curWorld.nextLevel();      // HP・弾を持ち越して次のステージへ
+    applyHunterGate();         // 次ステージにもハンターのゲートを張り直す
     curWorld.drainEvents();
     ai.syncLevel();            // 記憶は白紙から (学習時と同じ)
   } else {
@@ -169,7 +184,11 @@ function renderDemoBadge() {
     : mode.kind === 'hunt' ? '狩り' : '迷路';
   let tag = `${POLICIES2[policyName].label} [${m}] x${SPEEDS[speedIdx]}${paused ? ' ⏸' : ''}`;
   const lv = curWorld.level;
-  if (lv.killGate) tag += `  討伐 ${lv.kills}/${lv.killGate}`;   // 狩りモードの進捗
+  // 討伐ゲートの進捗。ハンターの銃キルゲート時は銃キル数で表示 (出口はこれで開く)
+  if (lv.killGate) {
+    const prog = curWorld.gunKillGate ? (lv.gunKills || 0) : lv.kills;
+    tag += `  ${curWorld.gunKillGate ? '銃討伐' : '討伐'} ${prog}/${lv.killGate}`;
+  }
   ctx.fillText(tag, 12, 20);
   ctx.fillStyle = '#789';
   ctx.font = '9px monospace';
@@ -183,6 +202,7 @@ document.addEventListener('keydown', e => {
 
   if (e.code === 'KeyK') {
     policyName = POLICY_ORDER[(POLICY_ORDER.indexOf(policyName) + 1) % POLICY_ORDER.length];
+    applyHunterGate();   // ハンターに切替えたら銃キルゲートを張る (外したら解除)
     ai = new AIDriver2(curWorld, currentPolicy());   // 記憶も引き継がず白紙から
     showModeMessage();
     return;
