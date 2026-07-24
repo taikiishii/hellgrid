@@ -31,7 +31,13 @@ tools/*.png
 tmp/
 
 # ===== 学習の成果物 (モデル・チェックポイント・TensorBoard) =====
+# GitHub 公開は不要。サイズも巨大 (runs2/ は 1GB 超) なので必ず除外する。
+# 新しい学習の出力先を足したら、ここにも追加すること。
 runs/
+runs2/
+# 学習ログ・評価ログ (*.log は上でも除外済みだが明示)
+*-train.log
+*-eval.log
 
 # 録画の中間ファイル (media/ai-play.webm 本体はコミットする)
 media/_raw/
