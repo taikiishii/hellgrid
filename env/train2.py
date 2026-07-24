@@ -179,6 +179,30 @@ STAGES = {
         "hpDamageScale": 1.5,
         "maxSteps": 2500,
     },
+    # 汎化 Phase 3 第2段: gen-hunt1 は複合課題(未知探索+鍵+水路+上位敵+gun-gate)を一度に
+    # 積んで失敗した (銃使用12→3%に崩壊・クリア24→16%)。killGate 系譜と同じく **易→難に分解**し、
+    # まず「未知レイアウトで銃で戦う」だけを取り戻す:
+    #  - 鍵なし・水路なし・上位敵ほぼなし・小さめサイズ (探索と副課題の負荷を落とす)
+    #  - gunKillBonus 0.3→0.8 に強化 (ナイフ習慣は頑健。難度が上がると必ず退避するため守る)
+    #  - 弾は多め。見た目の多様性(壁/配色)は無害なので残す
+    # ここで銃使用が戻れば、次段で鍵・水路・上位敵・サイズを戻して難度を上げる。
+    "gen-hunt2": {
+        "env2": True,
+        "levels": [0, 1, 2, 3, 4], "mazeMix": 0.75,   # 75%生成 / 25%実
+        "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.4, 1.0],
+        "mazeSize": [11, 19], "mazeBraid": 0.12, "mazeRooms": 3,
+        "mazeEnemies": [2, 5], "mazeFireballRatio": 0.2, "mazeEnemyElite": 0.1,
+        "mazeKeyDepth": 0,            # 鍵なし (複合課題を外す)
+        "mazeItems": {"heal": [1, 4], "ammo": [3, 6], "armor": [0, 2]},
+        "mazeDoors": [0, 2],          # 水路はなし
+        "mazeWallMix": 0.4, "mazeTheme": True,
+        "gunKillGate": True, "killGate": [0.2, 0.35],
+        "killGateByLevel": {2: [0, 0], 3: [0, 0]},
+        "gunKillBonus": 0.8,          # 銃使用を守る (0.3 では崩壊した)
+        "hpDamageScale": 1.5,
+        "maxSteps": 2000,
+    },
     # 銃使用カリキュラム 第1段: 「銃キルで出口が開く」を易しい単発で学ばせる。
     # camp-hunt7 (gun-kill-gate を通しにいきなり) は、ナイフ専門家 warm-start では
     # 銃を使う前にナイフで倒し gunKills=0 で詰んだ。キルゲートで戦闘を得た時と同じく
