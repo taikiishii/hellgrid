@@ -143,6 +143,21 @@ STAGES = {
         "mazeItems": {"heal": [0, 3], "ammo": [1, 3], "armor": [0, 2]},
         "maxSteps": 2500,
     },
+    # 汎化 第3段 (Phase 2b): 実面級に豊かにした生成器 (通常ドア・水路・上位敵M/K/F・壁多様・
+    # テーマ配色) で学習。生成が実面特徴を包含するので、混ぜ量に頼らず生成・実の両方が
+    # 伸びるはず。gen-nav2 (バランス型) から warm-start。実5面は 30% 混ぜて anchor。
+    "gen-nav3": {
+        "env2": True,
+        "levels": [0, 1, 2, 3, 4], "mazeMix": 0.7,   # 70%生成 / 30%実
+        "noEnemies": False, "noItems": False,
+        "enemyFraction": [0.4, 1.0],
+        "mazeSize": [11, 27], "mazeBraid": 0.12, "mazeRooms": 3,
+        "mazeEnemies": [0, 5], "mazeFireballRatio": 0.25, "mazeEnemyElite": 0.25,
+        "mazeKeyDepth": [0, 2],
+        "mazeItems": {"heal": [0, 3], "ammo": [1, 4], "armor": [0, 2]},
+        "mazeDoors": [0, 3], "mazeWater": [0, 4], "mazeWallMix": 0.4, "mazeTheme": True,
+        "maxSteps": 2500,
+    },
     # 銃使用カリキュラム 第1段: 「銃キルで出口が開く」を易しい単発で学ばせる。
     # camp-hunt7 (gun-kill-gate を通しにいきなり) は、ナイフ専門家 warm-start では
     # 銃を使う前にナイフで倒し gunKills=0 で詰んだ。キルゲートで戦闘を得た時と同じく
