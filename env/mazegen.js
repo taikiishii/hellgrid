@@ -183,12 +183,20 @@
       for (let i = 0; i < dist.length; i++) {
         if (dist[i] >= 5 && grid[(i / w) | 0][i % w] === '.') cand.push(i);
       }
+      // opts.enemyElite: 上位種 (牙獣M/獄騎士K/漂霊F) が混じる確率。汎化・難易度のばらつき用
+      const elite = opts.enemyElite || 0;
       for (let k = 0; k < n && cand.length; k++) {
         const j = (rng() * cand.length) | 0;
         const t = cand.splice(j, 1)[0];
-        const r = rng();
-        // r < fb: 焔鬼(I, 火球) / 次の15%: 散弾兵(G) / 残り: 亡兵(Z)
-        grid[(t / w) | 0][t % w] = r < fb ? 'I' : r < fb + 0.15 ? 'G' : 'Z';
+        let ch;
+        if (rng() < elite) {
+          ch = 'MKF'[(rng() * 3) | 0];   // 牙獣(突進) / 獄騎士(タフ) / 漂霊(遠距離)
+        } else {
+          const r = rng();
+          // r < fb: 焔鬼(I, 火球) / 次の15%: 散弾兵(G) / 残り: 亡兵(Z)
+          ch = r < fb ? 'I' : r < fb + 0.15 ? 'G' : 'Z';
+        }
+        grid[(t / w) | 0][t % w] = ch;
       }
     }
 
@@ -263,15 +271,54 @@
       scatter('pV', rn(opts.items.armor));
     }
 
-    // 安全網: 構築上は常に可解だが、万一不可解なら鍵/ドアを外して素の迷路に戻す
-    if (!isSolvable(grid, w, h, px, py)) {
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if ('RBrb'.includes(grid[y][x])) grid[y][x] = '.';
+    const rnRange = r => (Array.isArray(r) ? r[0] + ((rng() * (r[1] - r[0] + 1)) | 0) : (r || 0));
+    // ---- 通常ドア (D): 通路に扉を置く (E で開く)。通行可なので可解性に影響しない ----
+    for (let k = 0, nd = rnRange(opts.doors); k < nd; k++) {
+      const cand = [];
+      for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+        if (!floorAt(x, y)) continue;
+        let fl = 0; for (const [dx, dy] of DIRS) if (!REACH_WALL.includes(grid[y + dy][x + dx])) fl++;
+        if (fl === 2) cand.push([x, y]);   // 通路 (床の隣接がちょうど2)
+      }
+      if (!cand.length) break;
+      const [x, y] = cand[(rng() * cand.length) | 0];
+      grid[y][x] = 'D';
     }
+    // ---- 水路 (~): 通行不可のハザード。置いて不可解になったら戻す ----
+    for (let k = 0, nw = rnRange(opts.water); k < nw; k++) {
+      const cand = [];
+      for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) if (floorAt(x, y)) cand.push([x, y]);
+      if (!cand.length) break;
+      const [x, y] = cand[(rng() * cand.length) | 0];
+      grid[y][x] = '~';
+      if (!isSolvable(grid, w, h, px, py)) grid[y][x] = '.';   // 唯一の道を塞いだら撤回
+    }
+    // ---- 壁テクスチャの多様化: # の一部を & (テック壁) に (見た目のテーマ差、挙動は同じ) ----
+    if (opts.wallMix) {
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        if (grid[y][x] === '#' && rng() < opts.wallMix) grid[y][x] = '&';
+      }
+    }
+
+    // 安全網: 構築上は常に可解だが、万一不可解なら鍵/ドア/水路を外して素の迷路に戻す
+    if (!isSolvable(grid, w, h, px, py)) {
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if ('RBrb~'.includes(grid[y][x])) grid[y][x] = '.';
+    }
+
+    // ---- テーマ配色: パレットからランダムに (opts.theme 時)。既定は従来の茶系 ----
+    const THEMES = [
+      { ceilColor: '#1c1c22', floorColor: '#3a322a', fogColor: [10, 8, 8] },   // 茶 (既定)
+      { ceilColor: '#101418', floorColor: '#223038', fogColor: [6, 10, 14] },  // 青
+      { ceilColor: '#181410', floorColor: '#402820', fogColor: [14, 8, 6] },   // 赤茶
+      { ceilColor: '#141814', floorColor: '#283024', fogColor: [8, 12, 8] },   // 緑
+      { ceilColor: '#1a1a1a', floorColor: '#303030', fogColor: [11, 11, 13] }, // 灰
+    ];
+    const theme = opts.theme ? THEMES[(rng() * THEMES.length) | 0] : THEMES[0];
 
     const startDir = DIRS[(rng() * 4) | 0];
     return {
       name: `MAZE ${size}x${size} #${seed >>> 0}`,
-      ceilColor: '#1c1c22', floorColor: '#3a322a', fogColor: [10, 8, 8],
+      ceilColor: theme.ceilColor, floorColor: theme.floorColor, fogColor: theme.fogColor,
       startDir, par: 60,
       map: grid.map(row => row.join('')),
       // デバッグ用: 開始→最遠タイルの歩数 (出口はその隣)

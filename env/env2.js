@@ -130,6 +130,12 @@
         // mazeItems は個数レンジ {heal:[lo,hi], ammo:[lo,hi], armor:[lo,hi]}
         mazeKeyDepth: null,
         mazeItems: null,
+        // Phase 2b: 生成ステージを実面級に豊かにする (テーマ・難易度のばらつき)。
+        mazeEnemyElite: null,  // 上位種 M/K/F の混入確率 (0〜1)
+        mazeDoors: null,       // 通常ドア D の数 [lo,hi]
+        mazeWater: null,       // 水路 ~ の数 [lo,hi] (可解性チェックで唯一路は守る)
+        mazeWallMix: null,     // # を & に張り替える確率 (見た目のテーマ差)
+        mazeTheme: null,       // true で配色をパレットからランダム化
         hpDamageScale: 1,      // 被弾ペナルティの倍率 (回避を促す段階で >1 にする)
         // 回復回収ゲートのHP閾値の上書き (既定 REWARD2.healSeekBelow=60)。消耗が
         // 支配的なステージでは早めに (HP<80 で) 回復に寄せて、E1M2/M3 での削れを防ぐ
@@ -163,6 +169,8 @@
           size: this.cfg.mazeSize, braid: this.cfg.mazeBraid, rooms: this.cfg.mazeRooms,
           enemies: this.cfg.mazeEnemies, fireballRatio: this.cfg.mazeFireballRatio,
           keyDepth: this.cfg.mazeKeyDepth, items: this.cfg.mazeItems,
+          enemyElite: this.cfg.mazeEnemyElite, doors: this.cfg.mazeDoors,
+          water: this.cfg.mazeWater, wallMix: this.cfg.mazeWallMix, theme: this.cfg.mazeTheme,
         });
         // このコンテキストの LEVELS に1スロット確保して毎回差し替える
         // (World.loadLevel は LEVELS[index] を読むだけなので、これで注入できる)

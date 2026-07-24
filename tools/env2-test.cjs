@@ -743,6 +743,26 @@ console.log('\n[19] 生成ステージ (鍵・ドア・アイテム・可解性)
   // 後方互換: 指定なしでは従来どおり鍵/ドア/アイテムを作らない
   const plain = generateMaze(7, { size: 13, braid: 0.15, rooms: 2, enemies: [2, 4] });
   ok(cnt(plain.map, 'RBrbhHaAsSpV') === 0, `opts無指定は従来どおり (鍵/ドア/アイテム 0)`);
+
+  // Phase 2b: ドア/水路/上位敵/壁多様/テーマ配色を足しても全て可解
+  let allSolv2 = true, doors = 0, water = 0, elite = 0, themes = new Set();
+  for (let s = 1; s <= 120; s++) {
+    const def = generateMaze(s, {
+      size: [13, 25], braid: 0.12, rooms: 3, enemies: [2, 6], enemyElite: 0.3,
+      keyDepth: [0, 2], items: { heal: [0, 3], ammo: [1, 3], armor: [0, 2] },
+      doors: [0, 3], water: [0, 4], wallMix: 0.4, theme: true,
+    });
+    if (!solvable(def.map)) allSolv2 = false;
+    if (cnt(def.map, 'D') > 0) doors++;
+    if (cnt(def.map, '~') > 0) water++;
+    if (cnt(def.map, 'MKF') > 0) elite++;
+    themes.add(def.floorColor);
+  }
+  ok(allSolv2, `Phase2b全部入りでも120件全て可解 (水路が唯一路を塞がない)`);
+  ok(doors > 40 && water > 40 && elite > 40, `ドア/水路/上位敵が十分ある (${doors}/${water}/${elite})`);
+  ok(themes.size >= 3, `テーマ配色が複数 (${themes.size}色)`);
+  const plain2 = generateMaze(9, { size: 13, rooms: 2, enemies: [2, 4] });
+  ok(cnt(plain2.map, 'D~&MKF') === 0 && plain2.floorColor === '#3a322a', `Phase2b要素も後方互換 (未指定は不変)`);
 }
 
 console.log(failures ? `\nNG ${failures}件の失敗` : '\nすべてOK');
