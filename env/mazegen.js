@@ -23,10 +23,59 @@
 
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
+  // ---- 可解性チェック (鍵→ドア→出口の到達を保証する) ----
+  // 壁・秘密扉・水路は通れない。R/B は対応する鍵を拾っていれば通れる。
+  const REACH_WALL = '#&=*~';
+  function passableReach(ch, red, blue) {
+    if (REACH_WALL.includes(ch)) return false;
+    if (ch === 'R') return red;
+    if (ch === 'B') return blue;
+    return true;   // 床 . P X T / ドア D / 敵 / アイテム / 鍵
+  }
+  // start から「鍵を拾いながら」到達できる床の seen 配列を返す (鍵取得で範囲が広がる)
+  function reachWithKeys(grid, w, h, sx, sy) {
+    const seen = new Uint8Array(w * h);
+    let red = false, blue = false, changed = true;
+    while (changed) {
+      changed = false;
+      seen[sy * w + sx] = 1;
+      const q = [];
+      for (let i = 0; i < w * h; i++) if (seen[i]) q.push(i);
+      for (let qi = 0; qi < q.length; qi++) {
+        const c = q[qi], cx = c % w, cy = (c / w) | 0, ch = grid[cy][cx];
+        if (ch === 'r' && !red) { red = true; changed = true; }
+        if (ch === 'b' && !blue) { blue = true; changed = true; }
+        for (const [dx, dy] of DIRS) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const k = ny * w + nx;
+          if (seen[k] || !passableReach(grid[ny][nx], red, blue)) continue;
+          seen[k] = 1; q.push(k);
+        }
+      }
+    }
+    return seen;
+  }
+  function findTile(grid, w, h, chs) {
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (chs.includes(grid[y][x])) return [x, y];
+    return null;
+  }
+  function isSolvable(grid, w, h, sx, sy) {
+    const xt = findTile(grid, w, h, 'X');
+    if (!xt) return false;
+    return !!reachWithKeys(grid, w, h, sx, sy)[xt[1] * w + xt[0]];
+  }
+
   function generateMaze(seed, opts = {}) {
-    const size = opts.size || 11;
-    if (size < 5 || size % 2 === 0) throw new Error(`mazeSize は 5 以上の奇数: ${size}`);
     const rng = makeRNG((seed >>> 0) || 1);
+    // サイズは固定値か [lo,hi] 範囲 (エピソードごとに奇数を抽選 = 難易度のばらつき)
+    let size = opts.size || 11;
+    if (Array.isArray(size)) {
+      const lo = size[0] | 1, hi = size[1] | 0;          // lo は奇数へ丸め
+      const steps = Math.max(0, ((hi - lo) / 2) | 0);
+      size = lo + 2 * ((rng() * (steps + 1)) | 0);
+    }
+    if (size < 5 || size % 2 === 0) throw new Error(`mazeSize は 5 以上の奇数: ${size}`);
     const w = size, h = size;
     const cw = (w - 1) / 2, ch = (h - 1) / 2;   // セル数
 
@@ -162,6 +211,62 @@
     }
     const [ex, ey] = best;
     grid[ey][ex] = 'X';
+
+    // ---- 鍵・施錠ドア: 鍵→ドア→出口の依存を、可解性を保ったまま作る ----
+    // 経路上の「切断タイル」(壁にすると出口が P から切れる床) をドアにし、鍵をその手前
+    // (P側の到達域) に置く = 構築上つねに可解。depth 2 は前段の鍵込みの到達域で入れ子になる。
+    const floorAt = (x, y) => grid[y][x] === '.';
+    let depth = opts.keyDepth || 0;
+    if (Array.isArray(depth)) depth = depth[0] + ((rng() * (depth[1] - depth[0] + 1)) | 0);
+    depth = Math.min(depth, 2);
+    const DOOR_KEY = [['R', 'r'], ['B', 'b']];
+    for (let li = 0; li < depth; li++) {
+      const [door, key] = DOOR_KEY[li];
+      // これまでの鍵込みの到達域から、出口へ向かう切断タイルを探す
+      const cuts = [];
+      for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+        if (!floorAt(x, y)) continue;
+        grid[y][x] = '#';
+        if (!isSolvable(grid, w, h, px, py)) cuts.push([x, y, dist[y * w + x]]);
+        grid[y][x] = '.';
+      }
+      if (!cuts.length) break;                    // これ以上ロックできない
+      cuts.sort((a, b) => b[2] - a[2]);           // P から遠い切断を優先 (奥にロック)
+      const [dxx, dyy] = cuts[(rng() * Math.min(3, cuts.length)) | 0];
+      grid[dyy][dxx] = door;
+      // 鍵はドアの手前 (鍵未配置の今の到達域) の床。P から遠めを選ぶ
+      const near = reachWithKeys(grid, w, h, px, py);
+      const kc = [];
+      for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+        if (floorAt(x, y) && near[y * w + x] && !(x === px && y === py)) kc.push([x, y, dist[y * w + x]]);
+      }
+      if (!kc.length) { grid[dyy][dxx] = '.'; break; }   // 置けないならロック撤回
+      kc.sort((a, b) => b[2] - a[2]);
+      const [kx, ky] = kc[(rng() * Math.min(5, kc.length)) | 0];
+      grid[ky][kx] = key;
+    }
+
+    // ---- アイテム: 回復・弾薬・アーマーを床にばらまく (密度可変) ----
+    if (opts.items) {
+      const rn = r => (r ? r[0] + ((rng() * (r[1] - r[0] + 1)) | 0) : 0);
+      const scatter = (chars, n) => {
+        for (let k = 0; k < n; k++) {
+          const cand = [];
+          for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) if (floorAt(x, y)) cand.push([x, y]);
+          if (!cand.length) return;
+          const [x, y] = cand[(rng() * cand.length) | 0];
+          grid[y][x] = chars[(rng() * chars.length) | 0];
+        }
+      };
+      scatter('hH', rn(opts.items.heal));
+      scatter('aAsS', rn(opts.items.ammo));
+      scatter('pV', rn(opts.items.armor));
+    }
+
+    // 安全網: 構築上は常に可解だが、万一不可解なら鍵/ドアを外して素の迷路に戻す
+    if (!isSolvable(grid, w, h, px, py)) {
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if ('RBrb'.includes(grid[y][x])) grid[y][x] = '.';
+    }
 
     const startDir = DIRS[(rng() * 4) | 0];
     return {

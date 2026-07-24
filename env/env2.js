@@ -125,6 +125,11 @@
         killGateByLevel: null,
         mazeEnemies: null,     // 迷路に置く敵の数 [lo, hi] (例: [1, 3])
         mazeFireballRatio: null,  // 迷路の敵の火球持ち (焔鬼) 比率。高いとストレイフ要求
+        // 汎化: 生成迷路に鍵/施錠ドア/アイテムを足す (実ステージ級の課題を手続き生成)。
+        // mazeKeyDepth は 0/1/2 の固定値か [lo,hi] 範囲 (エピソードごとに抽選)。
+        // mazeItems は個数レンジ {heal:[lo,hi], ammo:[lo,hi], armor:[lo,hi]}
+        mazeKeyDepth: null,
+        mazeItems: null,
         hpDamageScale: 1,      // 被弾ペナルティの倍率 (回避を促す段階で >1 にする)
         // 回復回収ゲートのHP閾値の上書き (既定 REWARD2.healSeekBelow=60)。消耗が
         // 支配的なステージでは早めに (HP<80 で) 回復に寄せて、E1M2/M3 での削れを防ぐ
@@ -157,6 +162,7 @@
         const def = generateMaze(this.episodeSeed, {
           size: this.cfg.mazeSize, braid: this.cfg.mazeBraid, rooms: this.cfg.mazeRooms,
           enemies: this.cfg.mazeEnemies, fireballRatio: this.cfg.mazeFireballRatio,
+          keyDepth: this.cfg.mazeKeyDepth, items: this.cfg.mazeItems,
         });
         // このコンテキストの LEVELS に1スロット確保して毎回差し替える
         // (World.loadLevel は LEVELS[index] を読むだけなので、これで注入できる)

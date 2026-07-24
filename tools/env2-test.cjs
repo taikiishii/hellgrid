@@ -696,5 +696,54 @@ console.log('\n[18] 銃キル直接ボーナス (gunKillBonus):');
   ok(Math.abs(knife1 - knife0) < 1e-6, `ナイフキルには乗らない (差 ${(knife1 - knife0).toFixed(2)})`);
 }
 
+// ---- 19. 生成器の汎化拡張: 鍵/施錠ドア/アイテム + 可解性 ----
+console.log('\n[19] 生成ステージ (鍵・ドア・アイテム・可解性):');
+{
+  // 鍵→ドア→出口を辿れるか (テスト独立実装)
+  const solvable = (map) => {
+    const h = map.length, w = map[0].length, g = map.map(r => r.split(''));
+    let px = 0, py = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (g[y][x] === 'P') { px = x; py = y; }
+    const WALL = '#&=*~';
+    let red = false, blue = false, changed = true; const seen = new Uint8Array(w * h);
+    while (changed) {
+      changed = false; seen[py * w + px] = 1; const q = [];
+      for (let i = 0; i < w * h; i++) if (seen[i]) q.push(i);
+      for (let qi = 0; qi < q.length; qi++) {
+        const c = q[qi], cx = c % w, cy = (c / w) | 0, ch = g[cy][cx];
+        if (ch === 'r' && !red) { red = true; changed = true; }
+        if (ch === 'b' && !blue) { blue = true; changed = true; }
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const k = ny * w + nx; if (seen[k]) continue;
+          const nc = g[ny][nx]; if (WALL.includes(nc)) continue;
+          if (nc === 'R' && !red) continue; if (nc === 'B' && !blue) continue;
+          seen[k] = 1; q.push(k);
+        }
+      }
+    }
+    let xx = 0, xy = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (g[y][x] === 'X') { xx = x; xy = y; }
+    return !!seen[xy * w + xx];
+  };
+  const cnt = (map, chs) => map.join('').split('').filter(c => chs.includes(c)).length;
+  let allSolv = true, locks = 0, items = 0, mismatch = 0;
+  for (let s = 1; s <= 150; s++) {
+    const def = generateMaze(s, { size: 15, braid: 0.12, rooms: 3, keyDepth: [0, 2], items: { heal: [0, 3], ammo: [1, 3], armor: [0, 2] } });
+    if (!solvable(def.map)) allSolv = false;
+    if (cnt(def.map, 'R') > 0) locks++;
+    if (cnt(def.map, 'hHaAsSpV') > 0) items++;
+    if (cnt(def.map, 'R') !== cnt(def.map, 'r') || cnt(def.map, 'B') !== cnt(def.map, 'b')) mismatch++;
+  }
+  ok(allSolv, `150生成ステージが全て可解 (鍵→ドア→出口)`);
+  ok(locks > 50, `施錠ステージが十分ある (${locks}/150)`);
+  ok(items > 120, `アイテム入りが十分ある (${items}/150)`);
+  ok(mismatch === 0, `鍵とドアの数が整合 (R=r, B=b。不整合 ${mismatch})`);
+  // 後方互換: 指定なしでは従来どおり鍵/ドア/アイテムを作らない
+  const plain = generateMaze(7, { size: 13, braid: 0.15, rooms: 2, enemies: [2, 4] });
+  ok(cnt(plain.map, 'RBrbhHaAsSpV') === 0, `opts無指定は従来どおり (鍵/ドア/アイテム 0)`);
+}
+
 console.log(failures ? `\nNG ${failures}件の失敗` : '\nすべてOK');
 process.exitCode = failures ? 1 : 0;

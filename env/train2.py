@@ -116,6 +116,18 @@ STAGES = {
         "hpDamageScale": 2.0,
         "maxSteps": 1200,
     },
+    # 汎化 第1段: 手続き生成のフル機能ステージ (鍵・施錠ドア・アイテム) で走り抜けを学ぶ。
+    # 固定5面への過学習を避け、サイズ/鍵ロック段数/アイテム密度/敵数をエピソードごとに
+    # 広く抽選する (ドメインランダム化)。生成器が可解性を保証。走り抜けチャンピオン cs2 から
+    # warm-start し、「未知レイアウトで鍵を取り出口へ」を汎化させる。敵は軽め (ナビ主眼)。
+    "gen-nav1": {
+        "env2": True,
+        "mazeSize": [11, 21], "mazeBraid": 0.12, "mazeRooms": 3,
+        "mazeEnemies": [0, 4], "mazeFireballRatio": 0.2,
+        "mazeKeyDepth": [0, 2],
+        "mazeItems": {"heal": [0, 3], "ammo": [1, 3], "armor": [0, 2]},
+        "maxSteps": 2000,
+    },
     # 銃使用カリキュラム 第1段: 「銃キルで出口が開く」を易しい単発で学ばせる。
     # camp-hunt7 (gun-kill-gate を通しにいきなり) は、ナイフ専門家 warm-start では
     # 銃を使う前にナイフで倒し gunKills=0 で詰んだ。キルゲートで戦闘を得た時と同じく
